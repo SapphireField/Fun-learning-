@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => {
     base: '/',
     define: {
       // This exposes the API_KEY to your client-side code
-      'process.env.API_KEY': JSON.stringify(env.API_KEY)
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || '')
     }
   }
 })
