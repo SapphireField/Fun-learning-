@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Wand2, Volume2, X, Loader2, History, Trash2, Clock, Square, Upload, Download, FileText, Printer, BookOpen, AlertCircle } from 'lucide-react';
+import { Wand2, Volume2, X, Loader2, History, Trash2, Clock, Square, Upload, Download, FileText, Printer, BookOpen, AlertCircle, Save } from 'lucide-react';
 import { convertLargeTextToPinyin, generateSpeech, extractTextFromFile } from '../services/geminiService';
 import { playPCM, stopAudio, calculateWeightedActiveIndex } from '../utils/audio';
 import { exportToEpub, exportToHtml, exportToPdf, exportToWord } from '../utils/exportUtils';
@@ -68,6 +68,13 @@ const PinyinConverter: React.FC = () => {
         localStorage.setItem('pinyinHistory', JSON.stringify(updatedHistory));
       } catch (e) {
           console.error("Failed to save history", e);
+      }
+  };
+
+  const handleManualSave = () => {
+      if (result.length > 0 && inputText) {
+          saveToHistory(inputText, result);
+          alert("Saved to History!");
       }
   };
 
@@ -288,6 +295,13 @@ const PinyinConverter: React.FC = () => {
             <div className="flex justify-between items-center mb-4 no-print">
                 <h3 className="text-xl font-bold text-teal-600 fun-font">Result</h3>
                 <div className="flex gap-1">
+                     <button 
+                        onClick={handleManualSave}
+                        className="p-2 rounded-full bg-orange-50 text-orange-600 hover:bg-orange-100 transition-colors"
+                        title="Save to History"
+                    >
+                        <Save size={18} />
+                    </button>
                     <button 
                         onClick={() => exportToHtml(result)}
                         className="p-2 rounded-full bg-teal-50 text-teal-600 hover:bg-teal-100 transition-colors"
