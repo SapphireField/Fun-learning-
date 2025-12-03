@@ -22,6 +22,7 @@ const App: React.FC = () => {
         const backupData = {
             pinyinHistory: localStorage.getItem('pinyinHistory'),
             customItems: localStorage.getItem('customItems'),
+            ebookHistory: localStorage.getItem('ebookHistory'),
             timestamp: Date.now(),
             version: '1.0'
         };
@@ -55,6 +56,9 @@ const App: React.FC = () => {
             }
             if (json.customItems) {
                 localStorage.setItem('customItems', json.customItems);
+            }
+            if (json.ebookHistory) {
+                localStorage.setItem('ebookHistory', json.ebookHistory);
             }
             
             alert("Progress restored successfully! The app will now reload.");

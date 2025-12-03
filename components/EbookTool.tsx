@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { Upload, FileText, Loader2, Download, Printer, BookOpen, Scissors, CheckCircle2, Play, AlertCircle, FileType, Zap } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Upload, FileText, Loader2, Download, Printer, BookOpen, Scissors, CheckCircle2, Play, AlertCircle, FileType, Zap, History, Trash2, Clock, Save, ChevronRight } from 'lucide-react';
 import { extractTextFromFile, convertLargeTextToPinyin } from '../services/geminiService';
 import { exportToEpub, exportToHtml, exportToPdf, exportToWord } from '../utils/exportUtils';
 import { PinyinChar } from '../types';
@@ -12,6 +12,16 @@ interface BookPart {
     status: 'idle' | 'converting' | 'done';
     result: PinyinChar[];
     progress: number;
+}
+
+interface EbookHistoryItem {
+    id: string;
+    fileName: string;
+    date: number;
+    mode: 'single' | 'split';
+    fullText: string;
+    result?: PinyinChar[]; // For single mode
+    parts?: BookPart[]; // For split mode
 }
 
 const EbookTool: React.FC = () => {
@@ -29,7 +39,81 @@ const EbookTool: React.FC = () => {
   const [parts, setParts] = useState<BookPart[]>([]);
   const [convertingAll, setConvertingAll] = useState(false);
 
+  // History State
+  const [history, setHistory] = useState<EbookHistoryItem[]>([]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+      try {
+          const saved = localStorage.getItem('ebookHistory');
+          if (saved) {
+              setHistory(JSON.parse(saved));
+          }
+      } catch (e) {
+          console.error("Failed to load ebook history", e);
+      }
+  }, []);
+
+  const saveToHistory = (manual: boolean = false) => {
+      if (!fullText) return;
+
+      const newItem: EbookHistoryItem = {
+          id: Date.now().toString(),
+          fileName: file?.name || `Book ${new Date().toLocaleDateString()}`,
+          date: Date.now(),
+          mode,
+          fullText,
+          result: mode === 'single' ? result : undefined,
+          parts: mode === 'split' ? parts : undefined
+      };
+
+      try {
+          // Keep only last 5 items to avoid quota limits with large books
+          const updatedHistory = [newItem, ...history.filter(h => h.fullText !== fullText)].slice(0, 5);
+          setHistory(updatedHistory);
+          localStorage.setItem('ebookHistory', JSON.stringify(updatedHistory));
+          if (manual) alert("Progress saved to history!");
+      } catch (e) {
+          console.error("Failed to save history", e);
+          if (manual) alert("Storage full! Try deleting old history items.");
+      }
+  };
+
+  const loadHistoryItem = (item: EbookHistoryItem) => {
+      if (!confirm("Load this book? Current unsaved progress will be lost.")) return;
+
+      setFile(null); // Clear file input as we loaded from history
+      setFullText(item.fullText);
+      setMode(item.mode);
+      
+      if (item.mode === 'single') {
+          setResult(item.result || []);
+          setParts([]);
+          if (item.result && item.result.length > 0) {
+              setStatus('Loaded from History');
+              setProgress(100);
+          } else {
+              setStatus('');
+              setProgress(0);
+          }
+      } else {
+          setParts(item.parts || []);
+          setResult([]);
+      }
+      
+      // Scroll to top
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const deleteHistoryItem = (e: React.MouseEvent, id: string) => {
+      e.stopPropagation();
+      if (!confirm("Delete this book from history?")) return;
+      
+      const updated = history.filter(h => h.id !== id);
+      setHistory(updated);
+      localStorage.setItem('ebookHistory', JSON.stringify(updated));
+  };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
       const selected = e.target.files?.[0];
@@ -83,6 +167,10 @@ const EbookTool: React.FC = () => {
           setResult(pinyinData);
           setStatus('Complete!');
           setProgress(100);
+          
+          // Auto-save on completion for single mode
+          setTimeout(() => saveToHistory(), 500);
+          
       } catch (e) {
           console.error(e);
           setStatus("Error occurred during conversion.");
@@ -197,6 +285,8 @@ const EbookTool: React.FC = () => {
       }
       
       setConvertingAll(false);
+      // Auto save after batch
+      saveToHistory();
   };
 
   const getFileName = (suffix: string = '') => {
@@ -266,7 +356,7 @@ const EbookTool: React.FC = () => {
             <div className="space-y-6">
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-purple-100 flex justify-between items-center">
                     <div>
-                        <h3 className="font-bold text-gray-800 truncate max-w-[150px]">{file?.name}</h3>
+                        <h3 className="font-bold text-gray-800 truncate max-w-[150px]">{file?.name || 'Loaded File'}</h3>
                         <p className="text-xs text-gray-500">{fullText.length} characters loaded</p>
                     </div>
                     <button 
@@ -367,9 +457,18 @@ const EbookTool: React.FC = () => {
             <div className="mt-6 space-y-4">
                 <div className="flex justify-between items-center px-2">
                     <h3 className="font-bold text-gray-600">{parts.length} Parts Created</h3>
-                    <button onClick={() => setMode('single')} className="text-xs text-orange-500 font-bold hover:underline">
-                        Cancel Split
-                    </button>
+                    <div className="flex gap-2">
+                        <button 
+                            onClick={() => saveToHistory(true)}
+                            className="text-xs bg-gray-100 text-gray-600 font-bold px-3 py-1 rounded-full hover:bg-gray-200 flex items-center"
+                            title="Save progress to history"
+                        >
+                            <Save size={12} className="mr-1"/> Save Progress
+                        </button>
+                        <button onClick={() => setMode('single')} className="text-xs text-orange-500 font-bold hover:underline">
+                            Cancel Split
+                        </button>
+                    </div>
                 </div>
 
                 <button 
@@ -444,6 +543,49 @@ const EbookTool: React.FC = () => {
                 ))}
             </div>
         )}
+
+        {/* 7. History Section */}
+        <div className="mt-8 border-t border-gray-200 pt-6">
+            <h3 className="text-gray-500 font-bold flex items-center mb-4 text-sm uppercase tracking-wider">
+                <History size={16} className="mr-2"/> Book History
+            </h3>
+            
+            {history.length === 0 ? (
+                <div className="text-center py-6 text-gray-300 border-2 border-dashed border-gray-100 rounded-xl">
+                    <p className="text-xs">No saved books</p>
+                </div>
+            ) : (
+                <div className="space-y-3">
+                    {history.map((item) => (
+                        <div 
+                            key={item.id}
+                            onClick={() => loadHistoryItem(item)}
+                            className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center active:bg-purple-50 transition-colors cursor-pointer group"
+                        >
+                            <div className="overflow-hidden">
+                                <div className="flex items-center gap-2">
+                                    <FileType size={16} className="text-purple-400"/>
+                                    <p className="text-gray-800 font-bold truncate text-sm max-w-[150px]">{item.fileName}</p>
+                                </div>
+                                <p className="text-xs text-gray-400 mt-1 flex items-center">
+                                    <Clock size={10} className="mr-1"/>
+                                    {new Date(item.date).toLocaleDateString()} • {item.mode === 'split' ? `${item.parts?.length} parts` : 'Full'}
+                                </p>
+                            </div>
+                            <div className="flex items-center">
+                                <ChevronRight size={16} className="text-gray-300 mr-2"/>
+                                <button 
+                                    onClick={(e) => deleteHistoryItem(e, item.id)}
+                                    className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
     </div>
   );
 };
