@@ -299,24 +299,26 @@ export const extractTextFromFile = async (file: File): Promise<string> => {
         return await extractTextFromEpub(arrayBuffer);
     }
 
+    // For images, read as data URL
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = async (event) => {
              const base64String = event.target?.result as string;
-             const base64Data = base64String.split(',')[1];
-             if (base64Data) {
+             // Ensure we actually have data
+             if (base64String && base64String.includes(',')) {
+                 const base64Data = base64String.split(',')[1];
                  const text = await extractTextFromMedia(base64Data, file.type);
                  resolve(text);
              } else {
-                 resolve("Error processing file");
+                 resolve("Error: Could not read file data.");
              }
         };
-        reader.onerror = () => resolve("Error reading file");
+        reader.onerror = () => resolve("Error: Failed to read file.");
         reader.readAsDataURL(file);
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("File extraction error:", error);
-    return "Error reading file";
+    return `Error reading file: ${error.message}`;
   }
 }
 
@@ -325,6 +327,7 @@ export const extractTextFromMedia = async (base64Data: string, mimeType: string)
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: {
+        role: 'user',
         parts: [
           {
             inlineData: {
@@ -333,16 +336,20 @@ export const extractTextFromMedia = async (base64Data: string, mimeType: string)
             },
           },
           {
-            text: "Please extract all the Chinese text from this image or document. Return ONLY the text content. Do not add any explanations.",
+            text: "Transcribe all the Chinese text from this image/document exactly as it appears. Return ONLY the text content. Do not translate. Do not add explanations.",
           },
         ],
       },
     });
 
-    return response.text || "";
-  } catch (error) {
+    const text = response.text;
+    if (!text) {
+        throw new Error("AI returned empty response");
+    }
+    return text;
+  } catch (error: any) {
     console.error("Error extracting text:", error);
-    return "";
+    return `Error reading image: ${error.message || "Unknown error"}`;
   }
 };
 
