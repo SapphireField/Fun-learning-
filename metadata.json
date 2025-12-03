@@ -1,0 +1,7 @@
+{
+  "name": "Copy of Copy of Panda Lingo - Fun Chinese Learning",
+  "description": "A fun and interactive app for kids to learn Chinese with Pinyin support, intelligent chat, and speech practice.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
