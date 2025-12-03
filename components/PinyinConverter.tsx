@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Wand2, Volume2, X, Loader2, History, Trash2, Clock, Square, Upload, Download, FileText, Printer, BookOpen } from 'lucide-react';
+import { Wand2, Volume2, X, Loader2, History, Trash2, Clock, Square, Upload, Download, FileText, Printer, BookOpen, AlertCircle } from 'lucide-react';
 import { convertLargeTextToPinyin, generateSpeech, extractTextFromFile } from '../services/geminiService';
 import { playPCM, stopAudio, calculateWeightedActiveIndex } from '../utils/audio';
 import { exportToEpub, exportToHtml, exportToPdf, exportToWord } from '../utils/exportUtils';
@@ -23,6 +23,7 @@ const PinyinConverter: React.FC = () => {
   const [playbackProgress, setPlaybackProgress] = useState(0); // 0 to 1
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [fileProcessing, setFileProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -52,25 +53,33 @@ const PinyinConverter: React.FC = () => {
   }, []);
 
   const saveToHistory = (text: string, data: PinyinChar[]) => {
-      const newItem: HistoryItem = {
-          id: Date.now().toString(),
-          text: text.trim(),
-          data,
-          timestamp: Date.now()
-      };
+      try {
+        const newItem: HistoryItem = {
+            id: Date.now().toString(),
+            text: text.trim(),
+            data,
+            timestamp: Date.now()
+        };
 
-      // Filter out existing exact duplicates and add new item to top
-      const updatedHistory = [newItem, ...history.filter(h => h.text !== text.trim())].slice(50); // Limit to 50 items
-      
-      setHistory(updatedHistory);
-      localStorage.setItem('pinyinHistory', JSON.stringify(updatedHistory));
+        // Filter out existing exact duplicates and add new item to top
+        const updatedHistory = [newItem, ...history.filter(h => h.text !== text.trim())].slice(50); // Limit to 50 items
+        
+        setHistory(updatedHistory);
+        localStorage.setItem('pinyinHistory', JSON.stringify(updatedHistory));
+      } catch (e) {
+          console.error("Failed to save history", e);
+      }
   };
 
   const deleteHistoryItem = (e: React.MouseEvent, id: string) => {
       e.stopPropagation();
-      const updated = history.filter(h => h.id !== id);
-      setHistory(updated);
-      localStorage.setItem('pinyinHistory', JSON.stringify(updated));
+      try {
+          const updated = history.filter(h => h.id !== id);
+          setHistory(updated);
+          localStorage.setItem('pinyinHistory', JSON.stringify(updated));
+      } catch (e) {
+          console.error("Failed to delete history item", e);
+      }
   };
 
   const loadHistoryItem = (item: HistoryItem) => {
@@ -91,31 +100,34 @@ const PinyinConverter: React.FC = () => {
     setIsPlaying(false);
     setPlaybackProgress(0);
     setConversionProgress(0);
+    setError(null);
     if (requestRef.current) cancelAnimationFrame(requestRef.current);
     
     // 1. Check if we have this exact sentence in history first to speed up
     const existingItem = history.find(h => h.text === inputText.trim());
     if (existingItem) {
         setResult(existingItem.data);
-        // Move to top of history
         saveToHistory(existingItem.text, existingItem.data);
         return;
     }
 
     // 2. If not, call API
     setLoading(true);
-    // Use the large text converter to handle EPUBs and long texts with chunking
-    const data = await convertLargeTextToPinyin(inputText, (progress) => {
-        setConversionProgress(progress);
-    });
-    
-    if (data.length > 0) {
-        setResult(data);
-        saveToHistory(inputText, data);
+    try {
+        const data = await convertLargeTextToPinyin(inputText, (progress) => {
+            setConversionProgress(progress);
+        });
+        
+        if (data.length > 0) {
+            setResult(data);
+            saveToHistory(inputText, data);
+        }
+    } catch (e: any) {
+        setError(e.message || "An error occurred");
+    } finally {
+        setLoading(false);
+        setConversionProgress(0);
     }
-    
-    setLoading(false);
-    setConversionProgress(0);
   };
 
   const animate = () => {
@@ -147,17 +159,21 @@ const PinyinConverter: React.FC = () => {
     if (!inputText || audioLoading) return;
     
     setAudioLoading(true);
-    // Use default 'speech' style
-    const base64Audio = await generateSpeech(inputText, 'speech');
-    setAudioLoading(false);
-
-    if (base64Audio) {
-      setIsPlaying(true);
-      await playPCM(base64Audio, (duration) => {
-          durationRef.current = duration;
-          startTimeRef.current = Date.now();
-          requestRef.current = requestAnimationFrame(animate);
-      });
+    setError(null);
+    try {
+        const base64Audio = await generateSpeech(inputText, 'speech');
+        if (base64Audio) {
+            setIsPlaying(true);
+            await playPCM(base64Audio, (duration) => {
+                durationRef.current = duration;
+                startTimeRef.current = Date.now();
+                requestRef.current = requestAnimationFrame(animate);
+            });
+        }
+    } catch (e: any) {
+        setError("Failed to generate audio: " + e.message);
+    } finally {
+        setAudioLoading(false);
     }
   };
 
@@ -167,6 +183,7 @@ const PinyinConverter: React.FC = () => {
 
     setFileProcessing(true);
     setInputText("Processing file...");
+    setError(null);
 
     try {
         const text = await extractTextFromFile(file);
@@ -174,13 +191,14 @@ const PinyinConverter: React.FC = () => {
             setInputText(text);
         } else {
             setInputText(text || "Error processing file.");
+            if (text.startsWith("Error")) setError(text);
         }
-    } catch (error) {
+    } catch (error: any) {
         console.error("File upload error:", error);
         setInputText("Error processing file.");
+        setError(error.message);
     } finally {
         setFileProcessing(false);
-        // Reset input
         if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -190,12 +208,12 @@ const PinyinConverter: React.FC = () => {
     setIsPlaying(false);
     setPlaybackProgress(0);
     setConversionProgress(0);
+    setError(null);
     if (requestRef.current) cancelAnimationFrame(requestRef.current);
     setInputText('');
     setResult([]);
   };
   
-  // Use new weighted active index for sync
   const activeIndex = isPlaying ? calculateWeightedActiveIndex(playbackProgress, result) : -1;
 
   return (
@@ -203,7 +221,7 @@ const PinyinConverter: React.FC = () => {
       <div className="bg-white rounded-3xl shadow-xl p-6 mb-6 border-4 border-orange-100 relative overflow-hidden flex-shrink-0 no-print">
          <div className="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 bg-orange-200 rounded-full opacity-50 blur-xl"></div>
          <div className="flex justify-between items-center mb-4 relative z-10">
-            <h2 className="text-2xl font-black text-orange-500 flex items-center">
+            <h2 className="text-2xl font-black text-orange-500 flex items-center fun-font">
                 <Wand2 className="mr-2" /> Pinyin Magic
             </h2>
             <button 
@@ -223,9 +241,16 @@ const PinyinConverter: React.FC = () => {
             />
          </div>
          
+         {error && (
+            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl mb-4 text-sm flex items-start animate-in fade-in">
+                <AlertCircle size={18} className="mr-2 mt-0.5 flex-shrink-0" />
+                <span>{error}</span>
+            </div>
+         )}
+         
          <div className="relative">
             <textarea
-                className="w-full p-4 rounded-xl border-2 border-orange-200 focus:border-orange-400 focus:ring-2 focus:ring-orange-200 outline-none transition-all text-lg chinese-font resize-none placeholder:text-gray-300"
+                className="w-full p-4 rounded-xl border-2 border-orange-200 focus:border-orange-400 focus:ring-2 focus:ring-orange-200 outline-none transition-all text-lg chinese-font font-medium resize-none placeholder:text-gray-300"
                 rows={3}
                 placeholder="Type Chinese, or upload Image/PDF/Word/EPUB..."
                 value={inputText}
@@ -261,7 +286,7 @@ const PinyinConverter: React.FC = () => {
       {result.length > 0 && (
         <div className="bg-white rounded-3xl shadow-xl p-6 border-4 border-teal-100 mb-6 flex-shrink-0 print-content">
             <div className="flex justify-between items-center mb-4 no-print">
-                <h3 className="text-xl font-bold text-teal-600">Result</h3>
+                <h3 className="text-xl font-bold text-teal-600 fun-font">Result</h3>
                 <div className="flex gap-1">
                     <button 
                         onClick={() => exportToHtml(result)}
@@ -318,7 +343,6 @@ const PinyinConverter: React.FC = () => {
 
             <div className="flex flex-wrap content-start justify-center">
                 {result.map((item, index) => (
-                    // Using index as key is acceptable here since the array is static once loaded
                     <ChineseChar 
                         key={`${index}-${item.char}`} 
                         char={item.char} 

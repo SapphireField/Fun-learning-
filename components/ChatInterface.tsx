@@ -108,21 +108,27 @@ const ChatInterface: React.FC = () => {
         parts: [{ text: m.sender === 'user' ? (m.content || '') : (m.data?.chinese || '') }]
     }));
 
-    const response = await chatWithPanda(userMsg.content || '', history);
+    try {
+        const response = await chatWithPanda(userMsg.content || '', history);
 
-    const botMsgId = (Date.now() + 1).toString();
-    const botMsg: Message = {
-      id: botMsgId,
-      sender: 'bot',
-      data: response,
-      timestamp: Date.now(),
-    };
+        const botMsgId = (Date.now() + 1).toString();
+        const botMsg: Message = {
+            id: botMsgId,
+            sender: 'bot',
+            data: response,
+            timestamp: Date.now(),
+        };
 
-    setMessages(prev => [...prev, botMsg]);
-    setIsLoading(false);
-    
-    // Auto-speak the response
-    handlePlayAudio(response.chinese, botMsgId);
+        setMessages(prev => [...prev, botMsg]);
+        setIsLoading(false);
+        
+        // Auto-speak the response
+        handlePlayAudio(response.chinese, botMsgId);
+    } catch (error) {
+        setIsLoading(false);
+        // Error handling visual can be added here if desired, 
+        // currently chatWithPanda logs it and UI just stops loading
+    }
   };
 
   const handlePlayAudio = async (text: string, messageId: string) => {
@@ -154,7 +160,7 @@ const ChatInterface: React.FC = () => {
           <p className="text-sm text-orange-800 font-mono">{data.pinyin}</p>
        </div>
        <div className="flex items-end justify-between">
-          <p className="text-2xl chinese-font font-bold text-gray-800 mr-2">{data.chinese}</p>
+          <p className="text-2xl chinese-font font-medium text-gray-800 mr-2">{data.chinese}</p>
           <button 
             onClick={() => handlePlayAudio(data.chinese, msgId)} 
             className={`transition-colors p-1 rounded-full ${
@@ -218,7 +224,7 @@ const ChatInterface: React.FC = () => {
               }`}
             >
               {msg.sender === 'user' ? (
-                <p className="text-lg">{msg.content}</p>
+                <p className="text-lg chinese-font font-medium">{msg.content}</p>
               ) : (
                 msg.data && renderBotMessage(msg.data, msg.id)
               )}
@@ -259,7 +265,7 @@ const ChatInterface: React.FC = () => {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                 placeholder={isListening ? "Listening..." : "Say something..."}
-                className="flex-1 bg-gray-100 rounded-full px-5 py-3 outline-none focus:ring-2 focus:ring-blue-200 transition-all chinese-font"
+                className="flex-1 bg-gray-100 rounded-full px-5 py-3 outline-none focus:ring-2 focus:ring-blue-200 transition-all chinese-font font-medium"
             />
             
             <button

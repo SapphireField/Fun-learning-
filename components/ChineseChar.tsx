@@ -24,7 +24,7 @@ const ChineseChar: React.FC<ChineseCharProps> = ({ char, pinyin, size = 'md', is
   if (isPunctuation) {
     return (
         <div className={`flex flex-col items-center justify-end mx-0.5 my-1 h-full select-none transition-all duration-300 ${isActive ? 'scale-110' : ''}`}>
-             <span className={`${currentSize.text} text-gray-800 font-bold leading-none mb-1 opacity-70`}>{char}</span>
+             <span className={`${currentSize.text} text-gray-800 font-medium leading-none mb-1 opacity-70`}>{char}</span>
         </div>
     );
   }
@@ -44,7 +44,7 @@ const ChineseChar: React.FC<ChineseCharProps> = ({ char, pinyin, size = 'md', is
         {pinyin}
       </span>
       <span 
-        className={`chinese-font ${currentSize.text} leading-none transition-colors duration-200 ${
+        className={`chinese-font ${currentSize.text} font-medium leading-none transition-colors duration-200 ${
             isActive ? 'text-orange-500 drop-shadow-sm' : 'text-gray-800'
         }`}
       >

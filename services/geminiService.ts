@@ -3,11 +3,14 @@ import { PinyinChar, ChatResponse } from '../types';
 
 const apiKey = process.env.API_KEY;
 
-if (!apiKey) {
-  console.error("API_KEY is not defined in the environment variables.");
-}
-
+// Initialize AI, but we will check for key presence in functions to give better UI feedback
 const ai = new GoogleGenAI({ apiKey: apiKey || '' });
+
+const checkApiKey = () => {
+    if (!apiKey || apiKey.trim() === '') {
+        throw new Error("API Key is missing. Please add it in Vercel Settings (Environment Variables).");
+    }
+};
 
 const pinyinSchema: Schema = {
   type: Type.ARRAY,
@@ -46,7 +49,6 @@ const libraryContentSchema: Schema = {
 const pinyinCache = new Map<string, PinyinChar[]>();
 
 // Helper to chunk text into manageable pieces for the API
-// Increased default maxLength to 2500 since we use text output and need speed
 const chunkText = (text: string, maxLength: number = 2500): string[] => {
   const chunks: string[] = [];
   let currentText = text;
@@ -76,7 +78,7 @@ const chunkText = (text: string, maxLength: number = 2500): string[] => {
 };
 
 export const convertToPinyin = async (text: string): Promise<PinyinChar[]> => {
-  // This function is kept for small, single-shot requests like Chat/Library
+  checkApiKey();
   const trimmedText = text.trim();
   if (!trimmedText) return [];
 
@@ -108,13 +110,12 @@ export const convertToPinyin = async (text: string): Promise<PinyinChar[]> => {
     return result;
   } catch (error) {
     console.error("Error converting to pinyin:", error);
-    return [];
+    throw error; // Re-throw to allow UI to show error
   }
 };
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Process a single chunk with robust retry logic
 const processChunkWithRetries = async (chunk: string, index: number): Promise<PinyinChar[]> => {
     let retryCount = 0;
     
@@ -175,7 +176,7 @@ const processChunkWithRetries = async (chunk: string, index: number): Promise<Pi
             const errorMsg = e.toString().toLowerCase();
             if (errorMsg.includes('quota') || errorMsg.includes('429') || errorMsg.includes('limit') || errorMsg.includes('exceeded')) {
                     console.warn("Quota limit hit. Backing off...");
-                    waitTime = 5000 + (retryCount * 2000); // Wait longer for quota
+                    waitTime = 5000 + (retryCount * 2000); 
             }
 
             retryCount++;
@@ -185,11 +186,11 @@ const processChunkWithRetries = async (chunk: string, index: number): Promise<Pi
         }
     }
     
-    // Final fallback after all retries fail: just return plain chars
     return chunk.split('').map(c => ({ char: c, pinyin: '' }));
 };
 
 export const convertLargeTextToPinyin = async (text: string, onProgress?: (percent: number) => void): Promise<PinyinChar[]> => {
+    checkApiKey();
     const trimmedText = text.trim();
     if (!trimmedText) return [];
 
@@ -201,7 +202,6 @@ export const convertLargeTextToPinyin = async (text: string, onProgress?: (perce
     const chunks = chunkText(trimmedText, 2500);
     let combinedResult: PinyinChar[] = [];
     
-    // Process in batches to speed up (Concurrency = 2)
     const BATCH_SIZE = 2;
     
     for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
@@ -210,7 +210,6 @@ export const convertLargeTextToPinyin = async (text: string, onProgress?: (perce
             processChunkWithRetries(chunk, i + batchIndex)
         );
         
-        // Wait for current batch to complete
         const batchResults = await Promise.all(batchPromises);
         
         batchResults.forEach(res => {
@@ -237,7 +236,6 @@ function base64ToArrayBuffer(base64: string) {
     return bytes.buffer;
 }
 
-// Helper to extract text from EPUB
 async function extractTextFromEpub(arrayBuffer: ArrayBuffer): Promise<string> {
   if (!(window as any).JSZip) return "Error: JSZip not loaded";
   
@@ -246,7 +244,6 @@ async function extractTextFromEpub(arrayBuffer: ArrayBuffer): Promise<string> {
     const loadedZip = await zip.loadAsync(arrayBuffer);
     
     let text = "";
-    
     const fileNames = Object.keys(loadedZip.files);
     fileNames.sort();
 
@@ -255,7 +252,6 @@ async function extractTextFromEpub(arrayBuffer: ArrayBuffer): Promise<string> {
     for (const fileName of fileNames) {
       if (fileName.match(/\.(xhtml|html)$/i)) {
         const content = await loadedZip.files[fileName].async("string");
-        
         const doc = parser.parseFromString(content, 'text/html');
         
         const styles = doc.querySelectorAll('style, script');
@@ -274,7 +270,6 @@ async function extractTextFromEpub(arrayBuffer: ArrayBuffer): Promise<string> {
         }
       }
     }
-    
     return text || "No text found in EPUB";
   } catch (e) {
     console.error("EPUB extraction error", e);
@@ -299,12 +294,10 @@ export const extractTextFromFile = async (file: File): Promise<string> => {
         return await extractTextFromEpub(arrayBuffer);
     }
 
-    // For images, read as data URL
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = async (event) => {
              const base64String = event.target?.result as string;
-             // Ensure we actually have data
              if (base64String && base64String.includes(',')) {
                  const base64Data = base64String.split(',')[1];
                  const text = await extractTextFromMedia(base64Data, file.type);
@@ -323,6 +316,7 @@ export const extractTextFromFile = async (file: File): Promise<string> => {
 }
 
 export const extractTextFromMedia = async (base64Data: string, mimeType: string): Promise<string> => {
+  checkApiKey();
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
@@ -349,7 +343,7 @@ export const extractTextFromMedia = async (base64Data: string, mimeType: string)
     return text;
   } catch (error: any) {
     console.error("Error extracting text:", error);
-    return `Error reading image: ${error.message || "Unknown error"}`;
+    throw error;
   }
 };
 
@@ -357,6 +351,7 @@ export const chatWithPanda = async (
   message: string, 
   history: {role: string, parts: {text: string}[]}[]
 ): Promise<ChatResponse> => {
+  checkApiKey();
   try {
     let promptContext = "History:\n";
     history.forEach(h => {
@@ -393,15 +388,12 @@ export const chatWithPanda = async (
 
   } catch (error) {
     console.error("Chat error:", error);
-    return {
-      chinese: "出错了",
-      pinyin: "chū cuò le",
-      english: "Something went wrong. Try again!"
-    };
+    throw error;
   }
 };
 
 export const generateSpeech = async (text: string, style: 'speech' | 'song' | 'story' = 'speech'): Promise<string | null> => {
+  checkApiKey();
   try {
     let textToProcess = text;
     if (textToProcess.length > 4500) {
@@ -436,6 +428,7 @@ export const generateSpeech = async (text: string, style: 'speech' | 'song' | 's
 };
 
 export const getSongLyrics = async (title: string): Promise<{chineseTitle: string, content: string, english: string, type: 'rhyme' | 'story'} | null> => {
+  checkApiKey();
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
@@ -453,6 +446,6 @@ export const getSongLyrics = async (title: string): Promise<{chineseTitle: strin
     return JSON.parse(jsonText);
   } catch (error) {
     console.error("Error fetching library content:", error);
-    return null;
+    throw error;
   }
 };

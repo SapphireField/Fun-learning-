@@ -311,7 +311,7 @@ const SongLibrary: React.FC = () => {
             <div className={`rounded-3xl shadow-xl p-6 border-4 border-white mb-6 text-white relative overflow-hidden ${selectedItem.color} flex-shrink-0 transition-transform`}>
                 <div className="absolute -right-6 -top-6 w-32 h-32 bg-white opacity-20 rounded-full blur-2xl"></div>
                 {selectedItem.type === 'story' ? <BookOpen size={48} className="mb-4 opacity-80"/> : <Music size={48} className="mb-4 opacity-80" />}
-                <h2 className="text-4xl font-black chinese-font mb-1">{selectedItem.chineseTitle}</h2>
+                <h2 className="text-4xl font-black fun-font mb-1">{selectedItem.chineseTitle}</h2>
                 <p className="font-bold opacity-90">{selectedItem.title}</p>
                 <div className="absolute top-4 right-4 bg-white/20 px-2 py-1 rounded text-xs font-bold uppercase tracking-wider">
                     {selectedItem.type === 'story' ? 'Story' : 'Rhyme'}
@@ -402,7 +402,7 @@ const SongLibrary: React.FC = () => {
     <div className="flex flex-col h-full p-4 max-w-md mx-auto w-full overflow-y-auto no-scrollbar pb-24">
       <div className="mb-6 mt-2 flex justify-between items-end">
          <div>
-            <h2 className="text-3xl font-black text-gray-800 flex items-center">
+            <h2 className="text-3xl font-black text-gray-800 flex items-center fun-font">
                 <span className="bg-orange-100 p-2 rounded-xl mr-3 text-orange-500">📚</span>
                 Library
             </h2>
@@ -457,7 +457,7 @@ const SongLibrary: React.FC = () => {
                     {item.type === 'story' ? <BookOpen size={28} /> : <Music size={28} />}
                 </div>
                 <div className="overflow-hidden">
-                    <h3 className="text-xl font-bold text-gray-800 chinese-font truncate">{item.chineseTitle}</h3>
+                    <h3 className="text-xl font-bold text-gray-800 fun-font truncate">{item.chineseTitle}</h3>
                     <div className="flex items-center gap-2">
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 uppercase">{item.type}</span>
                         <p className="text-gray-500 text-sm truncate">{item.title}</p>
@@ -485,7 +485,7 @@ const SongLibrary: React.FC = () => {
                      {item.type === 'story' ? <BookOpen size={28} /> : <Music size={28} />}
                 </div>
                 <div className="overflow-hidden flex-1">
-                    <h3 className="text-xl font-bold text-gray-800 chinese-font truncate">{item.chineseTitle}</h3>
+                    <h3 className="text-xl font-bold text-gray-800 fun-font truncate">{item.chineseTitle}</h3>
                     <div className="flex items-center gap-2">
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 uppercase">{item.type}</span>
                         <p className="text-gray-500 text-sm truncate">{item.title}</p>
