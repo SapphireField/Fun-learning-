@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Mic, Volume2, StopCircle, Loader2, Square } from 'lucide-react';
 import { chatWithPanda, generateSpeech } from '../services/geminiService';
-import { playPCM, stopAudio } from '../utils/audio';
-import { Message, ChatResponse } from '../types';
+import { playPCM, stopAudio, calculateWeightedActiveIndex } from '../utils/audio';
+import { Message, ChatResponse, PinyinChar } from '../types';
+import ChineseChar from './ChineseChar';
 
 const ChatInterface: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([
@@ -12,8 +13,21 @@ const ChatInterface: React.FC = () => {
       timestamp: Date.now(),
       data: {
         chinese: "你好！我是你的中文老师。",
-        pinyin: "nǐ hǎo! wǒ shì nǐ de zhōng wén lǎo shī.",
-        english: "Hello! I am your Chinese teacher."
+        english: "Hello! I am your Chinese teacher.",
+        aligned: [
+            { char: "你", pinyin: "nǐ" },
+            { char: "好", pinyin: "hǎo" },
+            { char: "！", pinyin: "" },
+            { char: "我", pinyin: "wǒ" },
+            { char: "是", pinyin: "shì" },
+            { char: "你", pinyin: "nǐ" },
+            { char: "的", pinyin: "de" },
+            { char: "中", pinyin: "zhōng" },
+            { char: "文", pinyin: "wén" },
+            { char: "老", pinyin: "lǎo" },
+            { char: "师", pinyin: "shī" },
+            { char: "。", pinyin: "" }
+        ]
       }
     }
   ]);
@@ -21,9 +35,15 @@ const ChatInterface: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  const [playbackProgress, setPlaybackProgress] = useState(0);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+  
+  // Animation Refs
+  const startTimeRef = useRef<number>(0);
+  const durationRef = useRef<number>(0);
+  const requestRef = useRef<number>();
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -33,6 +53,7 @@ const ChatInterface: React.FC = () => {
   useEffect(() => {
     return () => {
         stopAudio();
+        if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
   }, []);
 
@@ -63,8 +84,7 @@ const ChatInterface: React.FC = () => {
   }, []);
 
   const toggleListening = () => {
-    stopAudio(); // Stop any playback if listening starts
-    setPlayingAudioId(null);
+    handleStopGlobal();
     
     if (!recognitionRef.current) {
       alert("Speech recognition is not supported in this browser.");
@@ -81,15 +101,16 @@ const ChatInterface: React.FC = () => {
 
   const handleStopGlobal = () => {
     stopAudio();
+    if (requestRef.current) cancelAnimationFrame(requestRef.current);
     setPlayingAudioId(null);
+    setPlaybackProgress(0);
   };
 
   const handleSend = async () => {
     if (!input.trim()) return;
 
     // Stop any playing audio
-    stopAudio();
-    setPlayingAudioId(null);
+    handleStopGlobal();
 
     const userMsg: Message = {
       id: Date.now().toString(),
@@ -126,61 +147,88 @@ const ChatInterface: React.FC = () => {
         handlePlayAudio(response.chinese, botMsgId);
     } catch (error) {
         setIsLoading(false);
-        // Error handling visual can be added here if desired, 
-        // currently chatWithPanda logs it and UI just stops loading
+    }
+  };
+
+  const animate = () => {
+    if (!startTimeRef.current || !durationRef.current) return;
+    
+    const now = Date.now();
+    const elapsed = (now - startTimeRef.current) / 1000;
+    const progress = Math.min(elapsed / durationRef.current, 1);
+    
+    setPlaybackProgress(progress);
+    
+    if (progress < 1) {
+      requestRef.current = requestAnimationFrame(animate);
+    } else {
+       setPlaybackProgress(0);
+       setPlayingAudioId(null);
     }
   };
 
   const handlePlayAudio = async (text: string, messageId: string) => {
     // If clicking the same message that is playing, stop it
     if (playingAudioId === messageId) {
-        stopAudio();
-        setPlayingAudioId(null);
+        handleStopGlobal();
         return;
     }
 
+    handleStopGlobal();
     setPlayingAudioId(messageId);
+    
     try {
       // Use default 'speech' style
       const base64Audio = await generateSpeech(text, 'speech');
       if (base64Audio) {
-        await playPCM(base64Audio);
+        await playPCM(base64Audio, (duration) => {
+            durationRef.current = duration;
+            startTimeRef.current = Date.now();
+            requestRef.current = requestAnimationFrame(animate);
+        });
       }
     } catch (e) {
       console.error("Failed to play audio", e);
-    } finally {
-      // Check if we are still the "active" player (user didn't click stop or another message)
-      setPlayingAudioId(prev => prev === messageId ? null : prev);
+      setPlayingAudioId(null);
     }
   };
 
-  const renderBotMessage = (data: ChatResponse, msgId: string) => (
-    <div className="flex flex-col">
-       <div className="bg-orange-100 rounded-lg p-2 mb-1">
-          <p className="text-sm text-orange-800 font-mono">{data.pinyin}</p>
-       </div>
-       <div className="flex items-end justify-between">
-          <p className="text-2xl chinese-font font-medium text-gray-800 mr-2">{data.chinese}</p>
-          <button 
-            onClick={() => handlePlayAudio(data.chinese, msgId)} 
-            className={`transition-colors p-1 rounded-full ${
-                playingAudioId === msgId 
-                ? 'bg-orange-100 text-orange-500 hover:bg-orange-200' 
-                : 'text-orange-400 hover:text-orange-600 hover:bg-gray-50'
-            }`}
-          >
-            {playingAudioId === msgId ? (
-                <div className="flex items-center space-x-1">
+  const renderBotMessage = (data: ChatResponse, msgId: string) => {
+    const isThisPlaying = playingAudioId === msgId;
+    const activeIndex = isThisPlaying ? calculateWeightedActiveIndex(playbackProgress, data.aligned) : -1;
+
+    return (
+        <div className="flex flex-col">
+           <div className="flex flex-wrap items-end mb-2">
+              {data.aligned.map((item, idx) => (
+                  <ChineseChar 
+                    key={idx}
+                    char={item.char}
+                    pinyin={item.pinyin}
+                    size="sm"
+                    isActive={isThisPlaying && idx === activeIndex}
+                  />
+              ))}
+              <button 
+                onClick={() => handlePlayAudio(data.chinese, msgId)} 
+                className={`transition-colors p-2 rounded-full ml-2 mb-1 ${
+                    isThisPlaying 
+                    ? 'bg-orange-100 text-orange-500 hover:bg-orange-200' 
+                    : 'text-orange-400 hover:text-orange-600 hover:bg-gray-50'
+                }`}
+              >
+                {isThisPlaying ? (
                     <Square size={16} className="fill-current"/>
-                </div>
-            ) : <Volume2 size={20} />}
-          </button>
-       </div>
-       <div className="mt-2 pt-2 border-t border-gray-100">
-         <p className="text-gray-500 text-sm italic">{data.english}</p>
-       </div>
-    </div>
-  );
+                ) : <Volume2 size={20} />}
+              </button>
+           </div>
+           
+           <div className="mt-1 pt-2 border-t border-gray-100">
+             <p className="text-gray-500 text-sm italic">{data.english}</p>
+           </div>
+        </div>
+    );
+  };
 
   return (
     <div className="flex flex-col h-full bg-gray-50 max-w-md mx-auto w-full relative">
@@ -217,7 +265,7 @@ const ChatInterface: React.FC = () => {
             className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-[85%] rounded-2xl p-4 shadow-sm ${
+              className={`max-w-[90%] rounded-2xl p-4 shadow-sm ${
                 msg.sender === 'user'
                   ? 'bg-blue-500 text-white rounded-br-none'
                   : 'bg-white border-2 border-orange-100 rounded-bl-none'

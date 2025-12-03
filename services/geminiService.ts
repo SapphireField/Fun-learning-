@@ -27,11 +27,22 @@ const pinyinSchema: Schema = {
 const chatResponseSchema: Schema = {
   type: Type.OBJECT,
   properties: {
-    chinese: { type: Type.STRING, description: "The response in simplified Chinese characters" },
-    pinyin: { type: Type.STRING, description: "The Pinyin for the chinese response with tone marks (e.g. hǎo)" },
+    chinese: { type: Type.STRING, description: "The complete response in simplified Chinese characters" },
     english: { type: Type.STRING, description: "The English translation of the response" },
+    aligned: {
+      type: Type.ARRAY,
+      description: "Breakdown of the Chinese response into character-pinyin pairs",
+      items: {
+        type: Type.OBJECT,
+        properties: {
+            char: { type: Type.STRING },
+            pinyin: { type: Type.STRING }
+        },
+        required: ["char", "pinyin"]
+      }
+    }
   },
-  required: ["chinese", "pinyin", "english"],
+  required: ["chinese", "english", "aligned"],
 };
 
 const libraryContentSchema: Schema = {
@@ -369,7 +380,7 @@ export const chatWithPanda = async (
       
       CRITICAL OUTPUT RULES:
       1. Strictly follow the JSON schema provided.
-      2. For the 'pinyin' field, YOU MUST USE TONE MARKS (e.g. "wǒ xǐ huān"), do NOT use numbers.
+      2. In the 'aligned' array, break down your Chinese response into characters and Pinyin.
     `;
 
     const response = await ai.models.generateContent({

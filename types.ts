@@ -5,8 +5,8 @@ export interface PinyinChar {
 
 export interface ChatResponse {
   chinese: string;
-  pinyin: string;
   english: string;
+  aligned: PinyinChar[];
 }
 
 export interface Message {
