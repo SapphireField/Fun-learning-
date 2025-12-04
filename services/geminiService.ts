@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, Schema, Modality } from "@google/genai";
-import { PinyinChar, ChatResponse } from '../types';
+import { PinyinChar, ChatResponse, QuizQuestion } from '../types';
 
 const apiKey = process.env.API_KEY;
 
@@ -54,6 +54,21 @@ const libraryContentSchema: Schema = {
     type: { type: Type.STRING, enum: ["rhyme", "story"], description: "Whether this is a song/rhyme or a story." },
   },
   required: ["chineseTitle", "content", "english", "type"],
+};
+
+const quizSchema: Schema = {
+  type: Type.ARRAY,
+  items: {
+    type: Type.OBJECT,
+    properties: {
+      question: { type: Type.STRING, description: "The question text (can be Chinese or English)" },
+      pinyin: { type: Type.STRING, description: "Pinyin for the question if it is in Chinese, or empty if English" },
+      options: { type: Type.ARRAY, items: { type: Type.STRING }, description: "4 possible answers" },
+      correctAnswer: { type: Type.INTEGER, description: "Index of the correct answer (0-3)" },
+      explanation: { type: Type.STRING, description: "Brief explanation of why the answer is correct" }
+    },
+    required: ["question", "options", "correctAnswer", "explanation"]
+  }
 };
 
 // In-memory cache for pinyin conversion to speed up repeated requests within the session
@@ -364,8 +379,11 @@ export const chatWithPanda = async (
 ): Promise<ChatResponse> => {
   checkApiKey();
   try {
+    // Truncate history if too long to save tokens
+    const recentHistory = history.slice(-10);
+    
     let promptContext = "History:\n";
-    history.forEach(h => {
+    recentHistory.forEach(h => {
         promptContext += `${h.role}: ${h.parts[0].text}\n`;
     });
     
@@ -375,6 +393,10 @@ export const chatWithPanda = async (
       
       You are "Panda", a friendly, enthusiastic, and patient Chinese tutor for children. 
       Your goal is to help kids learn Chinese conversationally.
+      
+      If the user provides a long text (like a story or upload), read it, summarize it simply, 
+      and pick out 1-2 interesting words to teach. Ask the child a question about it.
+      
       Keep your sentences relatively simple but natural.
       Respond to the user's message in Chinese.
       
@@ -401,6 +423,35 @@ export const chatWithPanda = async (
     console.error("Chat error:", error);
     throw error;
   }
+};
+
+export const generateQuiz = async (topic: string): Promise<QuizQuestion[]> => {
+    checkApiKey();
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Create a fun Chinese vocabulary quiz for children about "${topic}".
+            Generate 5 multiple-choice questions.
+            
+            Each question should test either:
+            1. The Chinese word for an English concept.
+            2. The meaning of a Chinese word.
+            3. The correct Pinyin for a character.
+            
+            Make it fun and age-appropriate!`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: quizSchema,
+            },
+        });
+
+        const jsonText = response.text;
+        if (!jsonText) throw new Error("No response from AI");
+        return JSON.parse(jsonText) as QuizQuestion[];
+    } catch (error) {
+        console.error("Quiz generation error", error);
+        throw error;
+    }
 };
 
 export const generateSpeech = async (text: string, style: 'speech' | 'song' | 'story' = 'speech'): Promise<string | null> => {

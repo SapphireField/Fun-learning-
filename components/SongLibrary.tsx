@@ -103,7 +103,7 @@ const SongLibrary: React.FC = () => {
   // Playback Refs
   const startTimeRef = useRef<number>(0);
   const durationRef = useRef<number>(0);
-  const requestRef = useRef<number>();
+  const requestRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     // Load custom items from local storage

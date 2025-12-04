@@ -17,9 +17,18 @@ export interface Message {
   timestamp: number;
 }
 
+export interface QuizQuestion {
+  question: string;
+  pinyin: string;
+  options: string[];
+  correctAnswer: number; // index 0-3
+  explanation: string;
+}
+
 export enum AppTab {
   LEARN = 'LEARN',
   CHAT = 'CHAT',
   SONGS = 'SONGS',
   EBOOKS = 'EBOOKS',
+  GAME = 'GAME',
 }

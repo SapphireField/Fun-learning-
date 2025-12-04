@@ -24,13 +24,16 @@ const PinyinConverter: React.FC = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [fileProcessing, setFileProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // New UI State
+  const [showHistory, setShowHistory] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Playback Refs for Karaoke
   const startTimeRef = useRef<number>(0);
   const durationRef = useRef<number>(0);
-  const requestRef = useRef<number>();
+  const requestRef = useRef<number | undefined>(undefined);
 
   // Load history from local storage on mount
   useEffect(() => {
@@ -75,6 +78,8 @@ const PinyinConverter: React.FC = () => {
       if (result.length > 0 && inputText) {
           saveToHistory(inputText, result);
           alert("Saved to History!");
+      } else {
+          alert("Nothing to save! Convert some text first.");
       }
   };
 
@@ -97,6 +102,7 @@ const PinyinConverter: React.FC = () => {
       
       setInputText(item.text);
       setResult(item.data);
+      setShowHistory(false);
       // Scroll to top to see result
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -224,21 +230,30 @@ const PinyinConverter: React.FC = () => {
   const activeIndex = isPlaying ? calculateWeightedActiveIndex(playbackProgress, result) : -1;
 
   return (
-    <div className="flex flex-col h-full p-4 max-w-md mx-auto w-full overflow-y-auto no-scrollbar pb-24">
+    <div className="flex flex-col h-full p-4 max-w-md mx-auto w-full overflow-y-auto no-scrollbar pb-24 relative">
       <div className="bg-white rounded-3xl shadow-xl p-6 mb-6 border-4 border-orange-100 relative overflow-hidden flex-shrink-0 no-print">
          <div className="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 bg-orange-200 rounded-full opacity-50 blur-xl"></div>
          <div className="flex justify-between items-center mb-4 relative z-10">
             <h2 className="text-2xl font-black text-orange-500 flex items-center fun-font">
                 <Wand2 className="mr-2" /> Pinyin Magic
             </h2>
-            <button 
-                onClick={() => fileInputRef.current?.click()}
-                disabled={fileProcessing || loading}
-                className="text-orange-500 bg-orange-50 p-2 rounded-full hover:bg-orange-100 transition-colors"
-                title="Import from File (Image, PDF, Word, EPUB)"
-            >
-                {fileProcessing ? <Loader2 className="animate-spin" size={20} /> : <Upload size={20} />}
-            </button>
+            <div className="flex gap-2">
+                <button 
+                    onClick={() => setShowHistory(true)}
+                    className="text-gray-400 bg-orange-50 p-2 rounded-full hover:bg-orange-100 hover:text-orange-500 transition-colors"
+                    title="View History"
+                >
+                    <History size={20} />
+                </button>
+                <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={fileProcessing || loading}
+                    className="text-orange-500 bg-orange-50 p-2 rounded-full hover:bg-orange-100 transition-colors"
+                    title="Import from File"
+                >
+                    {fileProcessing ? <Loader2 className="animate-spin" size={20} /> : <Upload size={20} />}
+                </button>
+            </div>
             <input 
                 type="file" 
                 ref={fileInputRef}
@@ -298,7 +313,7 @@ const PinyinConverter: React.FC = () => {
                      <button 
                         onClick={handleManualSave}
                         className="p-2 rounded-full bg-orange-50 text-orange-600 hover:bg-orange-100 transition-colors"
-                        title="Save to History"
+                        title="Force Save"
                     >
                         <Save size={18} />
                     </button>
@@ -369,43 +384,48 @@ const PinyinConverter: React.FC = () => {
         </div>
       )}
       
-      {/* History Section */}
-      <div className="flex-1 no-print">
-          <div className="flex items-center justify-between mb-3 px-2">
-            <h3 className="text-gray-500 font-bold flex items-center"><History size={18} className="mr-2"/> History</h3>
-            {history.length > 0 && (
-                <span className="text-xs text-gray-400">{history.length} saved</span>
-            )}
-          </div>
-          
-          <div className="space-y-3">
-            {history.length === 0 ? (
-                <div className="text-center py-8 text-gray-300 border-2 border-dashed border-gray-200 rounded-xl">
-                    <Clock size={32} className="mx-auto mb-2 opacity-50" />
-                    <p>No history yet</p>
-                </div>
-            ) : (
-                history.map((item) => (
-                    <div 
-                        key={item.id}
-                        onClick={() => loadHistoryItem(item)}
-                        className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center active:bg-orange-50 transition-colors cursor-pointer group"
-                    >
-                        <div className="overflow-hidden">
-                            <p className="text-gray-800 font-medium truncate chinese-font text-lg">{item.text}</p>
-                            <p className="text-xs text-gray-400 mt-1">{new Date(item.timestamp).toLocaleDateString()} • {item.data.length} chars</p>
-                        </div>
-                        <button 
-                            onClick={(e) => deleteHistoryItem(e, item.id)}
-                            className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all ml-2"
-                        >
-                            <Trash2 size={18} />
-                        </button>
+      {/* History Overlay */}
+      {showHistory && (
+          <div className="absolute inset-0 z-20 bg-orange-50 overflow-y-auto animate-in slide-in-from-bottom-5 p-4 pb-24">
+              <div className="flex justify-between items-center mb-4 bg-white p-4 rounded-xl shadow-sm">
+                  <h3 className="font-bold text-gray-700 text-lg flex items-center"><History className="mr-2"/> Translation History</h3>
+                  <button 
+                    onClick={() => setShowHistory(false)} 
+                    className="p-2 bg-gray-100 rounded-full hover:bg-gray-200"
+                  >
+                      <X size={20} />
+                  </button>
+              </div>
+              
+              <div className="space-y-3">
+                {history.length === 0 ? (
+                    <div className="text-center py-10 text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">
+                        <Clock size={32} className="mx-auto mb-2 opacity-50" />
+                        <p>No history yet</p>
                     </div>
-                ))
-            )}
+                ) : (
+                    history.map((item) => (
+                        <div 
+                            key={item.id}
+                            onClick={() => loadHistoryItem(item)}
+                            className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center active:bg-orange-50 transition-colors cursor-pointer group"
+                        >
+                            <div className="overflow-hidden">
+                                <p className="text-gray-800 font-medium truncate chinese-font text-lg">{item.text}</p>
+                                <p className="text-xs text-gray-400 mt-1">{new Date(item.timestamp).toLocaleDateString()} • {item.data.length} chars</p>
+                            </div>
+                            <button 
+                                onClick={(e) => deleteHistoryItem(e, item.id)}
+                                className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all ml-2"
+                            >
+                                <Trash2 size={18} />
+                            </button>
+                        </div>
+                    ))
+                )}
+              </div>
           </div>
-      </div>
+      )}
     </div>
   );
 };

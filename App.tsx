@@ -1,9 +1,10 @@
 import React, { useState, useRef } from 'react';
-import { BookOpen, MessageCircle, Library, Settings, Download, Upload, X, Save, FileType } from 'lucide-react';
+import { BookOpen, MessageCircle, Library, Settings, Download, Upload, X, Save, FileType, Gamepad2 } from 'lucide-react';
 import PinyinConverter from './components/PinyinConverter';
 import ChatInterface from './components/ChatInterface';
 import SongLibrary from './components/SongLibrary';
 import EbookTool from './components/EbookTool';
+import GameMode from './components/GameMode';
 import { AppTab } from './types';
 import { stopAudio } from './utils/audio';
 
@@ -97,6 +98,7 @@ const App: React.FC = () => {
         {activeTab === AppTab.CHAT && <ChatInterface />}
         {activeTab === AppTab.SONGS && <SongLibrary />}
         {activeTab === AppTab.EBOOKS && <EbookTool />}
+        {activeTab === AppTab.GAME && <GameMode />}
       </div>
 
       {/* Settings Modal */}
@@ -153,50 +155,62 @@ const App: React.FC = () => {
             
             <button
                 onClick={() => handleTabChange(AppTab.LEARN)}
-                className={`flex flex-col items-center gap-1 p-2 rounded-2xl transition-all duration-300 w-16 ${
+                className={`flex flex-col items-center gap-1 p-2 rounded-2xl transition-all duration-300 w-14 ${
                     activeTab === AppTab.LEARN 
                     ? 'text-orange-500 bg-orange-50 -translate-y-2 shadow-sm' 
                     : 'text-gray-400 hover:text-gray-600'
                 }`}
             >
-                <BookOpen size={24} strokeWidth={activeTab === AppTab.LEARN ? 3 : 2} />
-                <span className="text-[10px] font-bold">Learn</span>
+                <BookOpen size={20} strokeWidth={activeTab === AppTab.LEARN ? 3 : 2} />
+                <span className="text-[9px] font-bold">Learn</span>
             </button>
 
             <button
                 onClick={() => handleTabChange(AppTab.EBOOKS)}
-                className={`flex flex-col items-center gap-1 p-2 rounded-2xl transition-all duration-300 w-16 ${
+                className={`flex flex-col items-center gap-1 p-2 rounded-2xl transition-all duration-300 w-14 ${
                     activeTab === AppTab.EBOOKS 
                     ? 'text-purple-500 bg-purple-50 -translate-y-2 shadow-sm' 
                     : 'text-gray-400 hover:text-gray-600'
                 }`}
             >
-                <FileType size={24} strokeWidth={activeTab === AppTab.EBOOKS ? 3 : 2} />
-                <span className="text-[10px] font-bold">E-Books</span>
+                <FileType size={20} strokeWidth={activeTab === AppTab.EBOOKS ? 3 : 2} />
+                <span className="text-[9px] font-bold">E-Books</span>
+            </button>
+            
+            <button
+                onClick={() => handleTabChange(AppTab.GAME)}
+                className={`flex flex-col items-center gap-1 p-2 rounded-2xl transition-all duration-300 w-14 ${
+                    activeTab === AppTab.GAME 
+                    ? 'text-yellow-500 bg-yellow-50 -translate-y-2 shadow-sm' 
+                    : 'text-gray-400 hover:text-gray-600'
+                }`}
+            >
+                <Gamepad2 size={20} strokeWidth={activeTab === AppTab.GAME ? 3 : 2} />
+                <span className="text-[9px] font-bold">Game</span>
             </button>
 
             <button
                 onClick={() => handleTabChange(AppTab.CHAT)}
-                className={`flex flex-col items-center gap-1 p-2 rounded-2xl transition-all duration-300 w-16 ${
+                className={`flex flex-col items-center gap-1 p-2 rounded-2xl transition-all duration-300 w-14 ${
                     activeTab === AppTab.CHAT 
                     ? 'text-blue-500 bg-blue-50 -translate-y-2 shadow-sm' 
                     : 'text-gray-400 hover:text-gray-600'
                 }`}
             >
-                <MessageCircle size={24} strokeWidth={activeTab === AppTab.CHAT ? 3 : 2} />
-                <span className="text-[10px] font-bold">Talk</span>
+                <MessageCircle size={20} strokeWidth={activeTab === AppTab.CHAT ? 3 : 2} />
+                <span className="text-[9px] font-bold">Talk</span>
             </button>
 
             <button
                 onClick={() => handleTabChange(AppTab.SONGS)}
-                className={`flex flex-col items-center gap-1 p-2 rounded-2xl transition-all duration-300 w-16 ${
+                className={`flex flex-col items-center gap-1 p-2 rounded-2xl transition-all duration-300 w-14 ${
                     activeTab === AppTab.SONGS 
                     ? 'text-green-500 bg-green-50 -translate-y-2 shadow-sm' 
                     : 'text-gray-400 hover:text-gray-600'
                 }`}
             >
-                <Library size={24} strokeWidth={activeTab === AppTab.SONGS ? 3 : 2} />
-                <span className="text-[10px] font-bold text-center leading-tight">Stories</span>
+                <Library size={20} strokeWidth={activeTab === AppTab.SONGS ? 3 : 2} />
+                <span className="text-[9px] font-bold text-center leading-tight">Stories</span>
             </button>
 
         </div>

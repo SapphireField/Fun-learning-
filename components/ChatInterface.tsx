@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Mic, Volume2, StopCircle, Loader2, Square, Save, History, Trash2, X, MessageSquare } from 'lucide-react';
-import { chatWithPanda, generateSpeech } from '../services/geminiService';
+import { Send, Mic, Volume2, StopCircle, Loader2, Square, History, Trash2, MessageSquare, Paperclip, FileText } from 'lucide-react';
+import { chatWithPanda, generateSpeech, extractTextFromFile } from '../services/geminiService';
 import { playPCM, stopAudio, calculateWeightedActiveIndex } from '../utils/audio';
-import { Message, ChatResponse, PinyinChar } from '../types';
+import { Message, ChatResponse } from '../types';
 import ChineseChar from './ChineseChar';
 
 interface SavedSession {
@@ -20,7 +20,7 @@ const ChatInterface: React.FC = () => {
       timestamp: Date.now(),
       data: {
         chinese: "你好！我是你的中文老师。",
-        english: "Hello! I am your Chinese teacher.",
+        english: "Hello! I am your Chinese teacher. You can upload pictures or documents, and I'll help you read them!",
         aligned: [
             { char: "你", pinyin: "nǐ" },
             { char: "好", pinyin: "hǎo" },
@@ -41,20 +41,23 @@ const ChatInterface: React.FC = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [playbackProgress, setPlaybackProgress] = useState(0);
 
   // History State
   const [savedSessions, setSavedSessions] = useState<SavedSession[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [sessionId, setSessionId] = useState<string>(Date.now().toString());
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Animation Refs
   const startTimeRef = useRef<number>(0);
   const durationRef = useRef<number>(0);
-  const requestRef = useRef<number>();
+  const requestRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -72,6 +75,31 @@ const ChatInterface: React.FC = () => {
       }
   }, []);
 
+  // AUTO-SAVE
+  useEffect(() => {
+      if (messages.length <= 1) return; 
+
+      const firstUserMsg = messages.find(m => m.sender === 'user');
+      const title = firstUserMsg 
+        ? (firstUserMsg.content?.substring(0, 20) + (firstUserMsg.content && firstUserMsg.content.length > 20 ? '...' : '')) 
+        : 'New Conversation';
+
+      const currentSession: SavedSession = {
+          id: sessionId,
+          title: title,
+          date: Date.now(),
+          messages: messages
+      };
+
+      setSavedSessions(prev => {
+          const others = prev.filter(s => s.id !== sessionId);
+          const updated = [currentSession, ...others].slice(0, 20); 
+          localStorage.setItem('chatHistory', JSON.stringify(updated));
+          return updated;
+      });
+
+  }, [messages, sessionId]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -87,7 +115,7 @@ const ChatInterface: React.FC = () => {
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.continuous = false;
       recognitionRef.current.interimResults = false;
-      recognitionRef.current.lang = 'zh-CN'; // Default to Chinese listening for practice
+      recognitionRef.current.lang = 'zh-CN'; 
 
       recognitionRef.current.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
@@ -129,16 +157,38 @@ const ChatInterface: React.FC = () => {
     setPlaybackProgress(0);
   };
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
 
-    // Stop any playing audio
+      setIsProcessingFile(true);
+      
+      try {
+          const text = await extractTextFromFile(file);
+          if (text && !text.startsWith("Error")) {
+              // Send the extracted text as a user message context
+              await handleSend(`Teacher Panda, I found this text in a ${file.name}. Can you help me learn it? \n\nCONTENT:\n${text}`);
+          } else {
+              alert(text || "Could not read file.");
+          }
+      } catch (err: any) {
+          alert("Error processing file: " + err.message);
+      } finally {
+          setIsProcessingFile(false);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+  };
+
+  const handleSend = async (manualInput?: string) => {
+    const textToSend = manualInput || input;
+    if (!textToSend.trim()) return;
+
     handleStopGlobal();
 
     const userMsg: Message = {
       id: Date.now().toString(),
       sender: 'user',
-      content: input,
+      content: manualInput ? "📄 [Uploaded File] " + textToSend.substring(0, 50) + "..." : textToSend,
       timestamp: Date.now(),
     };
 
@@ -146,14 +196,13 @@ const ChatInterface: React.FC = () => {
     setInput('');
     setIsLoading(true);
 
-    // Prepare history for API
     const history = messages.map(m => ({
         role: m.sender === 'user' ? 'user' : 'model',
         parts: [{ text: m.sender === 'user' ? (m.content || '') : (m.data?.chinese || '') }]
     }));
 
     try {
-        const response = await chatWithPanda(userMsg.content || '', history);
+        const response = await chatWithPanda(textToSend, history);
 
         const botMsgId = (Date.now() + 1).toString();
         const botMsg: Message = {
@@ -165,8 +214,6 @@ const ChatInterface: React.FC = () => {
 
         setMessages(prev => [...prev, botMsg]);
         setIsLoading(false);
-        
-        // Auto-speak the response
         handlePlayAudio(response.chinese, botMsgId);
     } catch (error) {
         setIsLoading(false);
@@ -191,7 +238,6 @@ const ChatInterface: React.FC = () => {
   };
 
   const handlePlayAudio = async (text: string, messageId: string) => {
-    // If clicking the same message that is playing, stop it
     if (playingAudioId === messageId) {
         handleStopGlobal();
         return;
@@ -201,7 +247,6 @@ const ChatInterface: React.FC = () => {
     setPlayingAudioId(messageId);
     
     try {
-      // Use default 'speech' style
       const base64Audio = await generateSpeech(text, 'speech');
       if (base64Audio) {
         await playPCM(base64Audio, (duration) => {
@@ -216,31 +261,6 @@ const ChatInterface: React.FC = () => {
     }
   };
 
-  // --- Session Management ---
-
-  const saveSession = () => {
-      if (messages.length <= 1) return; // Don't save empty chats
-      
-      const firstUserMsg = messages.find(m => m.sender === 'user');
-      const title = firstUserMsg ? firstUserMsg.content?.substring(0, 20) + (firstUserMsg.content && firstUserMsg.content.length > 20 ? '...' : '') : 'New Conversation';
-      
-      const newSession: SavedSession = {
-          id: Date.now().toString(),
-          title: title || 'Chat Session',
-          date: Date.now(),
-          messages: messages
-      };
-      
-      try {
-          const updated = [newSession, ...savedSessions].slice(0, 20); // Limit 20
-          setSavedSessions(updated);
-          localStorage.setItem('chatHistory', JSON.stringify(updated));
-          alert("Conversation saved!");
-      } catch (e) {
-          alert("Failed to save. Storage might be full.");
-      }
-  };
-
   const deleteSession = (e: React.MouseEvent, id: string) => {
       e.stopPropagation();
       if (!confirm("Delete this saved conversation?")) return;
@@ -248,19 +268,25 @@ const ChatInterface: React.FC = () => {
       const updated = savedSessions.filter(s => s.id !== id);
       setSavedSessions(updated);
       localStorage.setItem('chatHistory', JSON.stringify(updated));
+      
+      if (id === sessionId) {
+          startNewChat();
+      }
   };
 
   const loadSession = (session: SavedSession) => {
-      if (messages.length > 2 && !confirm("Current conversation will be replaced. Continue?")) return;
+      if (messages.length > 2 && session.id !== sessionId && !confirm("Switch conversation?")) return;
       
       handleStopGlobal();
+      setSessionId(session.id);
       setMessages(session.messages);
       setShowHistory(false);
   };
 
   const startNewChat = () => {
       handleStopGlobal();
-      setMessages([messages[0]]); // Keep welcome message
+      setSessionId(Date.now().toString());
+      setMessages([messages[0]]); 
       setShowHistory(false);
   };
 
@@ -318,7 +344,6 @@ const ChatInterface: React.FC = () => {
         </div>
         
         <div className="flex items-center gap-2">
-            {/* Global Stop Button */}
             {playingAudioId && (
                 <button 
                     onClick={handleStopGlobal}
@@ -327,17 +352,7 @@ const ChatInterface: React.FC = () => {
                     <Square size={14} className="fill-current" /> Stop
                 </button>
             )}
-            
-            {/* Save Button */}
-            <button
-                onClick={saveSession}
-                className="p-2 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-full transition-colors"
-                title="Save Conversation"
-            >
-                <Save size={20} />
-            </button>
 
-            {/* History Toggle */}
             <button
                 onClick={() => setShowHistory(!showHistory)}
                 className={`p-2 rounded-full transition-colors ${showHistory ? 'bg-orange-100 text-orange-500' : 'text-gray-400 hover:text-orange-500 hover:bg-orange-50'}`}
@@ -369,7 +384,8 @@ const ChatInterface: React.FC = () => {
                           <div 
                             key={session.id} 
                             onClick={() => loadSession(session)}
-                            className="bg-gray-50 p-4 rounded-xl border border-gray-200 active:bg-orange-50 cursor-pointer flex justify-between items-center group"
+                            className={`p-4 rounded-xl border cursor-pointer flex justify-between items-center group
+                                ${session.id === sessionId ? 'bg-orange-50 border-orange-200' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'}`}
                           >
                               <div>
                                   <p className="font-bold text-gray-800 truncate max-w-[200px]">{session.title}</p>
@@ -403,7 +419,7 @@ const ChatInterface: React.FC = () => {
               }`}
             >
               {msg.sender === 'user' ? (
-                <p className="text-lg chinese-font font-medium">{msg.content}</p>
+                <p className="text-lg chinese-font font-medium whitespace-pre-wrap">{msg.content}</p>
               ) : (
                 msg.data && renderBotMessage(msg.data, msg.id)
               )}
@@ -428,6 +444,22 @@ const ChatInterface: React.FC = () => {
       <div className="absolute bottom-0 left-0 right-0 bg-white p-4 border-t border-gray-100">
         <div className="flex items-center gap-2">
             <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isProcessingFile}
+                className="p-3 bg-gray-100 text-gray-500 hover:text-orange-500 rounded-full transition-colors"
+                title="Upload Image/PDF/Word"
+            >
+                {isProcessingFile ? <Loader2 size={24} className="animate-spin" /> : <Paperclip size={24} />}
+            </button>
+            <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleFileUpload} 
+                accept="image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                className="hidden" 
+            />
+
+            <button
                 onClick={toggleListening}
                 className={`p-3 rounded-full transition-all ${
                     isListening 
@@ -443,12 +475,12 @@ const ChatInterface: React.FC = () => {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                placeholder={isListening ? "Listening..." : "Say something..."}
+                placeholder={isProcessingFile ? "Reading file..." : isListening ? "Listening..." : "Say something..."}
                 className="flex-1 bg-gray-100 rounded-full px-5 py-3 outline-none focus:ring-2 focus:ring-blue-200 transition-all chinese-font font-medium"
             />
             
             <button
-                onClick={handleSend}
+                onClick={() => handleSend()}
                 disabled={!input.trim() || isLoading}
                 className={`p-3 rounded-full transition-all ${
                     input.trim() 
