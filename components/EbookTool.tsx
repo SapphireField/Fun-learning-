@@ -304,9 +304,9 @@ const EbookTool: React.FC = () => {
         <div className="mb-6 mt-2">
             <h2 className="text-3xl font-black text-gray-800 flex items-center">
                 <span className="bg-purple-100 p-2 rounded-xl mr-3 text-purple-500">📖</span>
-                E-Book Tool
+                Add Pinyin to Books
             </h2>
-            <p className="text-gray-400 ml-14 mt-1">Convert EPUB, PDF & Docs</p>
+            <p className="text-gray-400 ml-14 mt-1">Upload EPUB, PDF & Docs to add Pinyin</p>
         </div>
 
         {/* 1. Upload Section */}
