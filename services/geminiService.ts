@@ -196,8 +196,7 @@ export const convertLargeTextToPinyin = async (text: string, onProgress?: (perce
     return combinedResult;
 };
 
-// ... [Existing File Helpers: base64ToArrayBuffer, extractTextFromEpub, extractTextFromFile, extractTextFromMedia] ...
-// Helper for Mammoth to process docx
+// ... [Existing File Helpers] ...
 function base64ToArrayBuffer(base64: string) {
     const binaryString = window.atob(base64);
     const len = binaryString.length;
@@ -433,7 +432,15 @@ export const generateSpeech = async (text: string, style: 'speech' | 'song' | 's
     if (style === 'song') {
         textToProcess = `Speak in Mandarin Chinese. Cheerfully recite: ${textToProcess}`;
     } else {
-        textToProcess = `Speak in Mandarin Chinese: ${textToProcess}`;
+        // Detect if text contains Chinese characters
+        const hasChinese = /[\u4e00-\u9fa5]/.test(textToProcess);
+        
+        if (hasChinese) {
+             textToProcess = `Speak in Mandarin Chinese: ${textToProcess}`;
+        } else {
+             // If pure English, just read it normally (Puck handles English well)
+             textToProcess = `Speak clearly: ${textToProcess}`;
+        }
     }
 
     const response = await ai.models.generateContent({
