@@ -344,7 +344,10 @@ export const chatWithPanda = async (
          -> Set "english" field to the detected language meaning or original text.
       2. If User Input is conversational Chinese:
          -> Reply naturally in simple Chinese.
-      3. Always provide Pinyin in the "aligned" array for the Chinese characters.
+      3. If the user asks for a STORY:
+         -> Generate a creative, engaging children's story (approx 150-300 characters). 
+         -> Keep language simple and suitable for kids.
+      4. Always provide Pinyin in the "aligned" array for the Chinese characters.
       
       OUTPUT JSON ONLY.
       Structure: { "chinese": "...", "english": "...", "aligned": [{"char":"中","pinyin":"zhōng"},...] }
