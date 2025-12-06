@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
-    base: '/',
+    base: '/', // Critical for Vercel deployment
     define: {
       // This exposes the API_KEY to your client-side code
       'process.env.API_KEY': JSON.stringify(env.API_KEY || '')
