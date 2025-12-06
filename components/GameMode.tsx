@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Gamepad2, Star, RefreshCw, Trophy, Loader2, ArrowRight, CheckCircle2, XCircle, Volume2, Square } from 'lucide-react';
-import { generateQuiz, generateSpeech } from '../services/geminiService';
+import React, { useState, useEffect, useRef } from 'react';
+import { Gamepad2, Star, RefreshCw, Trophy, Loader2, ArrowRight, CheckCircle2, XCircle, Volume2, Square, Mic, BookOpen, StopCircle } from 'lucide-react';
+import { generateQuiz, generateSpeech, generateVocabulary } from '../services/geminiService';
 import { playPCM, stopAudio } from '../utils/audio';
-import { QuizQuestion } from '../types';
+import { QuizQuestion, PinyinChar } from '../types';
 import ChineseChar from './ChineseChar';
+import FlashcardMode from './FlashcardMode';
 
 // Topics with Pinyin
 const TOPICS = [
@@ -19,7 +20,10 @@ const TOPICS = [
 
 const GameMode: React.FC = () => {
     const [isPlaying, setIsPlaying] = useState(false);
+    const [isStudying, setIsStudying] = useState(false);
     const [loading, setLoading] = useState(false);
+    
+    // Quiz State
     const [questions, setQuestions] = useState<QuizQuestion[]>([]);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [score, setScore] = useState(0);
@@ -28,9 +32,17 @@ const GameMode: React.FC = () => {
     const [topic, setTopic] = useState("Animals");
     const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
     
+    // Flashcard State
+    const [flashcardData, setFlashcardData] = useState<PinyinChar[]>([]);
+    
     // Audio State
     const [audioLoadingId, setAudioLoadingId] = useState<string | null>(null);
     const [playingId, setPlayingId] = useState<string | null>(null);
+
+    // Audio Input State
+    const [isListening, setIsListening] = useState(false);
+    const [manualTopic, setManualTopic] = useState('');
+    const recognitionRef = useRef<any>(null);
 
     useEffect(() => {
         return () => {
@@ -38,10 +50,42 @@ const GameMode: React.FC = () => {
         };
     }, []);
 
-    const startGame = async (selectedTopic: string) => {
+    useEffect(() => {
+        if ('webkitSpeechRecognition' in window) {
+            const SpeechRecognition = (window as any).webkitSpeechRecognition;
+            recognitionRef.current = new SpeechRecognition();
+            recognitionRef.current.continuous = false;
+            recognitionRef.current.interimResults = false;
+            recognitionRef.current.lang = 'zh-CN'; // Default to Chinese
+
+            recognitionRef.current.onresult = (event: any) => {
+                const transcript = event.results[0][0].transcript;
+                setManualTopic(transcript);
+                setIsListening(false);
+            };
+
+            recognitionRef.current.onend = () => setIsListening(false);
+        }
+    }, []);
+
+    const toggleListening = () => {
+        if (!recognitionRef.current) {
+            alert("Voice input not supported on this browser.");
+            return;
+        }
+        if (isListening) {
+            recognitionRef.current.stop();
+        } else {
+            recognitionRef.current.start();
+            setIsListening(true);
+        }
+    };
+
+    const startQuiz = async (selectedTopic: string) => {
         stopAudio();
         setTopic(selectedTopic);
         setLoading(true);
+        setIsStudying(false);
         try {
             const data = await generateQuiz(selectedTopic);
             setQuestions(data);
@@ -52,14 +96,30 @@ const GameMode: React.FC = () => {
             setSelectedAnswer(null);
             setIsCorrect(null);
         } catch (e) {
-            alert("Failed to start game. Please try again.");
+            alert("Could not start quiz. Try again.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const startStudy = async (selectedTopic: string) => {
+        stopAudio();
+        setTopic(selectedTopic);
+        setLoading(true);
+        try {
+            const data = await generateVocabulary(selectedTopic);
+            setFlashcardData(data);
+            setIsStudying(true);
+            setIsPlaying(false);
+        } catch (e) {
+            alert("Could not load flashcards.");
         } finally {
             setLoading(false);
         }
     };
 
     const handleAnswer = (index: number) => {
-        if (selectedAnswer !== null) return; // Prevent multiple clicks
+        if (selectedAnswer !== null) return; 
         stopAudio();
         setPlayingId(null);
 
@@ -87,10 +147,11 @@ const GameMode: React.FC = () => {
         stopAudio();
         setIsPlaying(false);
         setShowResult(false);
+        setIsStudying(false);
     };
 
     const handlePlayAudio = async (e: React.MouseEvent, text: string, id: string) => {
-        e.stopPropagation(); // Prevent selecting the answer when clicking audio
+        e.stopPropagation();
 
         if (playingId === id) {
             stopAudio();
@@ -102,17 +163,15 @@ const GameMode: React.FC = () => {
         setAudioLoadingId(id);
         
         try {
-            // Generate speech using the default speech style
             const base64Audio = await generateSpeech(text, 'speech');
             setAudioLoadingId(null);
 
             if (base64Audio) {
                 setPlayingId(id);
-                await playPCM(base64Audio, () => {}); // No need to track progress for simple buttons
+                await playPCM(base64Audio, () => {}); 
                 setPlayingId(null);
             }
         } catch (err) {
-            console.error(err);
             setAudioLoadingId(null);
             setPlayingId(null);
         }
@@ -128,6 +187,16 @@ const GameMode: React.FC = () => {
                 </h2>
                 <p className="text-gray-500 mt-2">Teacher Panda is thinking!</p>
             </div>
+        );
+    }
+
+    if (isStudying) {
+        return (
+            <FlashcardMode 
+                data={flashcardData} 
+                onClose={() => setIsStudying(false)} 
+                title={`Study: ${topic}`} 
+            />
         );
     }
 
@@ -153,7 +222,7 @@ const GameMode: React.FC = () => {
 
                 <div className="flex gap-4 w-full max-w-sm">
                     <button 
-                        onClick={() => startGame(topic)}
+                        onClick={() => startQuiz(topic)}
                         className="flex-1 py-4 bg-orange-500 text-white rounded-2xl font-bold shadow-md hover:bg-orange-600 transition-all active:scale-95 flex flex-col items-center justify-center"
                     >
                         <span className="text-xs text-orange-100 mb-0.5">zài wán yí cì</span>
@@ -244,7 +313,6 @@ const GameMode: React.FC = () => {
                                             {audioLoadingId === `opt-${idx}` ? <Loader2 className="animate-spin" size={20}/> : 
                                              playingId === `opt-${idx}` ? <Square size={20} className="fill-current"/> : <Volume2 size={20}/>}
                                         </div>
-
                                         {selectedAnswer !== null && idx === currentQ.correctAnswer && <CheckCircle2 size={24} className="text-green-600"/>}
                                         {selectedAnswer !== null && idx === selectedAnswer && idx !== currentQ.correctAnswer && <XCircle size={24} className="text-red-500"/>}
                                     </div>
@@ -304,40 +372,83 @@ const GameMode: React.FC = () => {
                 </button>
             </div>
 
+            {/* Custom Input Area */}
+            <div className="bg-white rounded-3xl p-6 shadow-md border-2 border-orange-100 text-center mb-6">
+                 <h3 className="font-bold text-gray-800 mb-1 chinese-font">想学别的吗?</h3>
+                 <p className="text-xs text-orange-400 mb-4">xiǎng xué bié de ma?</p>
+                 
+                 <div className="flex gap-2">
+                     <button 
+                        onClick={toggleListening}
+                        className={`p-3 rounded-full transition-all ${isListening ? 'bg-red-100 text-red-500 animate-pulse' : 'bg-gray-100 text-gray-500'}`}
+                     >
+                        {isListening ? <StopCircle size={24}/> : <Mic size={24}/>}
+                     </button>
+                     <input 
+                        className="flex-1 bg-gray-50 p-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-orange-200 text-center"
+                        placeholder="e.g. Space, Dinosaurs..."
+                        value={manualTopic}
+                        onChange={(e) => setManualTopic(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && manualTopic) {
+                                startQuiz(manualTopic);
+                            }
+                        }}
+                     />
+                 </div>
+                 {manualTopic && (
+                     <div className="flex gap-2 mt-3">
+                        <button 
+                            onClick={() => startStudy(manualTopic)}
+                            className="flex-1 py-2 bg-blue-100 text-blue-600 rounded-lg font-bold text-sm flex items-center justify-center hover:bg-blue-200"
+                        >
+                            <BookOpen size={16} className="mr-1"/> Study
+                        </button>
+                        <button 
+                            onClick={() => startQuiz(manualTopic)}
+                            className="flex-1 py-2 bg-orange-500 text-white rounded-lg font-bold text-sm flex items-center justify-center hover:bg-orange-600"
+                        >
+                            <Gamepad2 size={16} className="mr-1"/> Quiz
+                        </button>
+                     </div>
+                 )}
+            </div>
+
             <div className="grid grid-cols-2 gap-4 mb-8">
                 {TOPICS.map((t) => (
-                    <button 
+                    <div 
                         key={t.name} 
-                        onClick={() => startGame(t.en)}
-                        className="bg-white p-4 rounded-2xl shadow-sm border-b-4 border-yellow-200 active:border-b-0 active:translate-y-1 transition-all hover:bg-yellow-50 text-center group relative overflow-hidden"
+                        className="bg-white p-4 rounded-2xl shadow-sm border-b-4 border-yellow-200 transition-all hover:bg-yellow-50 text-center group relative overflow-hidden"
                     >
                         <div className="text-xs text-orange-400 mb-1">{t.pinyin}</div>
-                        <div className="font-bold text-gray-700 text-xl mb-1 group-hover:text-orange-500 chinese-font">{t.name}</div>
+                        <div className="font-bold text-gray-700 text-xl mb-3 group-hover:text-orange-500 chinese-font">{t.name}</div>
                         
                         {/* Audio Button on card */}
                         <div 
                             onClick={(e) => handlePlayAudio(e, t.name, `topic-${t.name}`)}
-                            className="absolute top-1 right-1 p-1.5 text-gray-300 hover:text-orange-500 hover:bg-orange-50 rounded-full transition-colors"
+                            className="absolute top-1 right-1 p-1.5 text-gray-300 hover:text-orange-500 hover:bg-orange-50 rounded-full transition-colors cursor-pointer"
                         >
                             {audioLoadingId === `topic-${t.name}` ? <Loader2 size={14} className="animate-spin"/> : <Volume2 size={14}/>}
                         </div>
-                    </button>
-                ))}
-            </div>
 
-            <div className="bg-white rounded-3xl p-6 shadow-md border-2 border-orange-100 text-center">
-                 <h3 className="font-bold text-gray-800 mb-1 chinese-font">想学别的吗?</h3>
-                 <p className="text-xs text-orange-400 mb-4">xiǎng xué bié de ma?</p>
-                 
-                 <input 
-                    className="w-full bg-gray-50 p-3 rounded-xl border border-gray-200 mb-3 outline-none focus:ring-2 focus:ring-orange-200 text-center"
-                    placeholder="e.g. Space, Dinosaurs..."
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                            startGame((e.target as HTMLInputElement).value);
-                        }
-                    }}
-                 />
+                        <div className="flex gap-2 justify-center">
+                            <button 
+                                onClick={() => startStudy(t.en)}
+                                className="p-2 bg-blue-50 text-blue-500 rounded-lg hover:bg-blue-100 transition-colors"
+                                title="Study Flashcards"
+                            >
+                                <BookOpen size={16}/>
+                            </button>
+                            <button 
+                                onClick={() => startQuiz(t.en)}
+                                className="p-2 bg-orange-50 text-orange-500 rounded-lg hover:bg-orange-100 transition-colors"
+                                title="Start Quiz"
+                            >
+                                <Gamepad2 size={16}/>
+                            </button>
+                        </div>
+                    </div>
+                ))}
             </div>
         </div>
     );

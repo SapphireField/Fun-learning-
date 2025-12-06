@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Music, Play, Square, ArrowLeft, Loader2, Globe, Languages, Plus, Trash2, Search, BookOpen } from 'lucide-react';
-import { convertToPinyin, generateSpeech, getSongLyrics } from '../services/geminiService';
+import { convertLargeTextToPinyin, generateSpeech, getSongLyrics } from '../services/geminiService';
 import { playPCM, stopAudio, calculateWeightedActiveIndex } from '../utils/audio';
 import { PinyinChar } from '../types';
 import ChineseChar from './ChineseChar';
@@ -149,7 +149,7 @@ const SongLibrary: React.FC = () => {
     
     // 3. Convert content to Pinyin via API
     setLoading(true);
-    const data = await convertToPinyin(item.content);
+    const data = await convertLargeTextToPinyin(item.content);
     setContentData(data);
     
     // Cache the result to the custom item so we don't need to fetch again

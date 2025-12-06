@@ -85,14 +85,12 @@ export async function playPCM(base64Data: string, onStart?: (duration: number) =
 export function calculateWeightedActiveIndex(progress: number, items: { char: string }[]): number {
   if (!items || items.length === 0) return -1;
   
-  // START BUFFER: Force index 0 for the first 2% of playback to account for initial TTS silence
-  if (progress < 0.02) return 0;
+  // START BUFFER: Force index 0 for the first 3% of playback to account for initial TTS silence/breath
+  if (progress < 0.03) return 0;
   
   if (progress >= 1) return items.length - 1;
 
   // Heuristic weights for TTS timing
-  // Characters usually take 1 unit of time
-  // Punctuation represents silence/pauses, effectively extending the time "spent" on that item
   const weights = items.map(item => {
     const c = item.char;
     // Long pauses for sentence endings - Increased weight for better sync
@@ -100,15 +98,18 @@ export function calculateWeightedActiveIndex(progress: number, items: { char: st
     // Medium pauses for clause breaks - Increased weight
     if (['，', ',', '、', '；', ';'].includes(c)) return 3.0;
     // Slight pause for whitespace/newlines
-    if (!c.trim()) return 1.0; 
+    if (!c.trim()) return 0.5; 
     // Default weight for a character
     return 1.0;
   });
 
   const totalWeight = weights.reduce((acc, w) => acc + w, 0);
   // Adjust progress to account for the buffer we skipped
-  const effectiveProgress = (progress - 0.02) / 0.98;
-  const targetWeight = effectiveProgress * totalWeight;
+  const effectiveProgress = (progress - 0.03) / 0.97;
+  // Clamp to 0
+  const adjustedProgress = Math.max(0, effectiveProgress);
+  
+  const targetWeight = adjustedProgress * totalWeight;
 
   let currentWeight = 0;
   for (let i = 0; i < weights.length; i++) {
@@ -120,4 +121,37 @@ export function calculateWeightedActiveIndex(progress: number, items: { char: st
   }
 
   return items.length - 1;
+}
+
+// For English words which vary in length
+export function calculateWeightedActiveIndexForTokens(progress: number, tokens: { text: string }[]): number {
+    if (!tokens || tokens.length === 0) return -1;
+    
+    // START BUFFER
+    if (progress < 0.03) return 0;
+    if (progress >= 1) return tokens.length - 1;
+
+    const weights = tokens.map(t => {
+        const word = t.text;
+        // Base weight on length (approx 1 unit per 3-4 chars, min 1)
+        let w = Math.max(1, word.length / 3.5);
+        
+        // Add weight for punctuation
+        if (word.includes('.') || word.includes('!') || word.includes('?')) w += 4.0;
+        else if (word.includes(',') || word.includes(';')) w += 2.0;
+        
+        return w;
+    });
+
+    const totalWeight = weights.reduce((acc, w) => acc + w, 0);
+    const effectiveProgress = (progress - 0.03) / 0.97;
+    const adjustedProgress = Math.max(0, effectiveProgress);
+    const targetWeight = adjustedProgress * totalWeight;
+
+    let currentWeight = 0;
+    for (let i = 0; i < weights.length; i++) {
+        currentWeight += weights[i];
+        if (currentWeight >= targetWeight) return i;
+    }
+    return tokens.length - 1;
 }

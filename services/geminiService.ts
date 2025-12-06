@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, Schema, Modality } from "@google/genai";
-import { PinyinChar, ChatResponse, QuizQuestion } from '../types';
+import { PinyinChar, ChatResponse, QuizQuestion, LearningMode } from '../types';
 
 const apiKey = process.env.API_KEY;
 
@@ -12,18 +12,6 @@ const checkApiKey = () => {
     }
 };
 
-const pinyinSchema: Schema = {
-  type: Type.ARRAY,
-  items: {
-    type: Type.OBJECT,
-    properties: {
-      char: { type: Type.STRING },
-      pinyin: { type: Type.STRING },
-    },
-    required: ["char", "pinyin"],
-  },
-};
-
 const chatResponseSchema: Schema = {
   type: Type.OBJECT,
   properties: {
@@ -31,7 +19,7 @@ const chatResponseSchema: Schema = {
     english: { type: Type.STRING, description: "The English translation of the response" },
     aligned: {
       type: Type.ARRAY,
-      description: "Breakdown of the Chinese response into character-pinyin pairs",
+      description: "Breakdown of the response into character-pinyin pairs",
       items: {
         type: Type.OBJECT,
         properties: {
@@ -61,21 +49,33 @@ const quizSchema: Schema = {
   items: {
     type: Type.OBJECT,
     properties: {
-      question: { type: Type.STRING, description: "The question text (can be Chinese or English)" },
-      pinyin: { type: Type.STRING, description: "Pinyin for the question if it is in Chinese, or empty if English" },
+      question: { type: Type.STRING, description: "The question text" },
+      pinyin: { type: Type.STRING, description: "Pinyin for the question if relevant" },
       options: { type: Type.ARRAY, items: { type: Type.STRING }, description: "4 possible answers" },
       correctAnswer: { type: Type.INTEGER, description: "Index of the correct answer (0-3)" },
-      explanation: { type: Type.STRING, description: "Brief explanation of why the answer is correct" }
+      explanation: { type: Type.STRING, description: "Brief explanation" }
     },
     required: ["question", "options", "correctAnswer", "explanation"]
   }
 };
 
-// In-memory cache for pinyin conversion to speed up repeated requests within the session
+const vocabSchema: Schema = {
+    type: Type.ARRAY,
+    items: {
+        type: Type.OBJECT,
+        properties: {
+            char: { type: Type.STRING, description: "The word or character" },
+            pinyin: { type: Type.STRING, description: "The Pinyin, translation, or IPA" }
+        },
+        required: ["char", "pinyin"]
+    }
+};
+
+// In-memory cache
 const pinyinCache = new Map<string, PinyinChar[]>();
 
-// Helper to chunk text into manageable pieces for the API
-const chunkText = (text: string, maxLength: number = 2500): string[] => {
+// Helper to chunk text
+const chunkText = (text: string, maxLength: number = 2000): string[] => {
   const chunks: string[] = [];
   let currentText = text;
 
@@ -85,16 +85,11 @@ const chunkText = (text: string, maxLength: number = 2500): string[] => {
       break;
     }
 
-    // Find the best split point (punctuation or newline) near the maxLength
     let splitIndex = currentText.lastIndexOf('\n', maxLength);
     if (splitIndex === -1) splitIndex = currentText.lastIndexOf('。', maxLength);
     if (splitIndex === -1) splitIndex = currentText.lastIndexOf('！', maxLength);
-    if (splitIndex === -1) splitIndex = currentText.lastIndexOf('？', maxLength);
-    if (splitIndex === -1) splitIndex = currentText.lastIndexOf('，', maxLength);
-    
-    // If no punctuation found, force split at maxLength
     if (splitIndex === -1) splitIndex = maxLength;
-    else splitIndex += 1; // Include the punctuation in the chunk
+    else splitIndex += 1;
 
     chunks.push(currentText.substring(0, splitIndex));
     currentText = currentText.substring(splitIndex);
@@ -103,67 +98,32 @@ const chunkText = (text: string, maxLength: number = 2500): string[] => {
   return chunks;
 };
 
-export const convertToPinyin = async (text: string): Promise<PinyinChar[]> => {
-  checkApiKey();
-  const trimmedText = text.trim();
-  if (!trimmedText) return [];
-
-  if (pinyinCache.has(trimmedText)) {
-    return pinyinCache.get(trimmedText)!;
-  }
-
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: `Break down the following Chinese text into individual characters and provide the Pinyin for each. 
-      IMPORTANT RULES:
-      1. Use standard Pinyin with tone marks for the 'pinyin' field (e.g., "nǐ"), NOT numbers.
-      2. Keep punctuation marks (like ，。！？：；) as separate items in the array.
-      3. For punctuation marks, strictly set the 'pinyin' field to an empty string "".
-      
-      Text: "${trimmedText}"`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: pinyinSchema,
-      },
-    });
-
-    const jsonText = response.text;
-    if (!jsonText) return [];
-    
-    const result = JSON.parse(jsonText) as PinyinChar[];
-    pinyinCache.set(trimmedText, result);
-    return result;
-  } catch (error) {
-    console.error("Error converting to pinyin:", error);
-    throw error; // Re-throw to allow UI to show error
-  }
-};
-
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const processChunkWithRetries = async (chunk: string, index: number): Promise<PinyinChar[]> => {
+const processChunkWithRetries = async (chunk: string, index: number, mode: LearningMode): Promise<PinyinChar[]> => {
     let retryCount = 0;
+    const isEnglish = mode === 'ENGLISH';
     
     while (retryCount < 5) {
         try {
+            const prompt = isEnglish 
+                ? `Analyze the following English text.
+                   Return a PLAIN TEXT list. Format: Word|Chinese Translation
+                   Rules:
+                   1. Split by meaningful words/phrases.
+                   2. Provide concise Chinese meaning.
+                   3. Format: "Hello|你好"
+                   4. Keep punctuation as separate items with empty translation (e.g. "?|")`
+                : `Break down Chinese text.
+                   Return PLAIN TEXT list. Format: Character|Pinyin
+                   Rules:
+                   1. One char per line.
+                   2. Standard Pinyin (nǐ).
+                   3. Punctuation has empty pinyin (e.g. "，|").`;
+
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: `Break down the following Chinese text into individual characters and provide the Pinyin for each.
-                
-                CRITICAL INSTRUCTION:
-                Return the result as a PLAIN TEXT list.
-                Format each line exactly as: Character|Pinyin
-                
-                Rules:
-                1. One character per line.
-                2. Use standard Pinyin with tone marks (e.g. nǐ).
-                3. For punctuation, strictly leave the pinyin part empty (e.g. ，|).
-                4. Do NOT use markdown code blocks. Do NOT use JSON.
-                5. Be robust. If whitespace is odd, ignore it.
-                
-                Text to convert:
-                ${chunk}`,
+                contents: `${prompt}\n\nText:\n${chunk}`,
             });
         
             const textOutput = response.text;
@@ -182,75 +142,56 @@ const processChunkWithRetries = async (chunk: string, index: number): Promise<Pi
                             pinyin: parts[1].trim()
                         });
                     } else {
-                        // Fallback
                         chunkResult.push({ char: trimmedLine[0], pinyin: '' });
                     }
                 }
-
-                if (chunkResult.length > 0) {
-                    return chunkResult;
-                }
+                if (chunkResult.length > 0) return chunkResult;
             }
-            throw new Error("Empty result from parsing");
+            throw new Error("Empty result");
 
         } catch (e: any) {
-            console.error(`Error converting chunk ${index} (attempt ${retryCount + 1}):`, e);
-            
-            // EXPONENTIAL BACKOFF
-            let waitTime = 2000 * Math.pow(2, retryCount); 
-            
-            const errorMsg = e.toString().toLowerCase();
-            if (errorMsg.includes('quota') || errorMsg.includes('429') || errorMsg.includes('limit') || errorMsg.includes('exceeded')) {
-                    console.warn("Quota limit hit. Backing off...");
-                    waitTime = 5000 + (retryCount * 2000); 
-            }
-
+            let waitTime = 1000 * Math.pow(2, retryCount);
+            if (e.toString().includes('429')) waitTime = 5000;
             retryCount++;
-            if (retryCount < 5) {
-                await delay(waitTime); 
-            }
+            if (retryCount < 5) await delay(waitTime);
         }
     }
-    
     return chunk.split('').map(c => ({ char: c, pinyin: '' }));
 };
 
-export const convertLargeTextToPinyin = async (text: string, onProgress?: (percent: number) => void): Promise<PinyinChar[]> => {
+export const convertLargeTextToPinyin = async (text: string, onProgress?: (percent: number) => void, mode: LearningMode = 'CHINESE'): Promise<PinyinChar[]> => {
     checkApiKey();
     const trimmedText = text.trim();
     if (!trimmedText) return [];
 
-    if (pinyinCache.has(trimmedText)) {
+    const cacheKey = `${mode}:${trimmedText}`;
+    if (pinyinCache.has(cacheKey)) {
         if (onProgress) onProgress(100);
-        return pinyinCache.get(trimmedText)!;
+        return pinyinCache.get(cacheKey)!;
     }
 
-    const chunks = chunkText(trimmedText, 2500);
+    const chunks = chunkText(trimmedText, 2000);
     let combinedResult: PinyinChar[] = [];
     
+    // Batch process for speed
     const BATCH_SIZE = 2;
-    
     for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
         const batch = chunks.slice(i, i + BATCH_SIZE);
         const batchPromises = batch.map((chunk, batchIndex) => 
-            processChunkWithRetries(chunk, i + batchIndex)
+            processChunkWithRetries(chunk, i + batchIndex, mode)
         );
         
         const batchResults = await Promise.all(batchPromises);
-        
-        batchResults.forEach(res => {
-            combinedResult = [...combinedResult, ...res];
-        });
+        batchResults.forEach(res => combinedResult = [...combinedResult, ...res]);
 
-        if (onProgress) {
-            onProgress(Math.round(((i + batch.length) / chunks.length) * 100));
-        }
+        if (onProgress) onProgress(Math.round(((i + batch.length) / chunks.length) * 100));
     }
 
-    pinyinCache.set(trimmedText, combinedResult);
+    pinyinCache.set(cacheKey, combinedResult);
     return combinedResult;
 };
 
+// ... [Existing File Helpers: base64ToArrayBuffer, extractTextFromEpub, extractTextFromFile, extractTextFromMedia] ...
 // Helper for Mammoth to process docx
 function base64ToArrayBuffer(base64: string) {
     const binaryString = window.atob(base64);
@@ -379,30 +320,24 @@ export const chatWithPanda = async (
 ): Promise<ChatResponse> => {
   checkApiKey();
   try {
-    // Truncate history if too long to save tokens
-    const recentHistory = history.slice(-10);
+    const recentHistory = history.slice(-6); // Reduced history context for speed
     
     let promptContext = "History:\n";
     recentHistory.forEach(h => {
         promptContext += `${h.role}: ${h.parts[0].text}\n`;
     });
     
+    // Optimized prompt for speed
     const prompt = `
       ${promptContext}
       User: ${message}
       
-      You are "Panda", a friendly, enthusiastic, and patient Chinese tutor for children. 
-      Your goal is to help kids learn Chinese conversationally.
+      Role: Friendly Chinese tutor for kids.
+      Task: Reply in Chinese. Keep it simple.
+      If user sends long text: summarize briefly, teach 1 word.
       
-      If the user provides a long text (like a story or upload), read it, summarize it simply, 
-      and pick out 1-2 interesting words to teach. Ask the child a question about it.
-      
-      Keep your sentences relatively simple but natural.
-      Respond to the user's message in Chinese.
-      
-      CRITICAL OUTPUT RULES:
-      1. Strictly follow the JSON schema provided.
-      2. In the 'aligned' array, break down your Chinese response into characters and Pinyin.
+      OUTPUT JSON ONLY.
+      Structure: { "chinese": "...", "english": "...", "aligned": [{"char":"中","pinyin":"zhōng"},...] }
     `;
 
     const response = await ai.models.generateContent({
@@ -411,12 +346,11 @@ export const chatWithPanda = async (
       config: {
         responseMimeType: "application/json",
         responseSchema: chatResponseSchema,
-        systemInstruction: "You are a helpful Chinese language tutor for kids. Always use correct Pinyin with tone marks."
       },
     });
 
     const jsonText = response.text;
-    if (!jsonText) throw new Error("No response from AI");
+    if (!jsonText) throw new Error("No response");
     return JSON.parse(jsonText) as ChatResponse;
 
   } catch (error) {
@@ -425,20 +359,18 @@ export const chatWithPanda = async (
   }
 };
 
-export const generateQuiz = async (topic: string): Promise<QuizQuestion[]> => {
+export const generateQuiz = async (topic: string, mode: LearningMode = 'CHINESE'): Promise<QuizQuestion[]> => {
     checkApiKey();
     try {
+        const langInstruction = mode === 'ENGLISH' 
+            ? "Teach English to Chinese kids." 
+            : "Teach Chinese to English kids.";
+
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Create a fun Chinese vocabulary quiz for children about "${topic}".
-            Generate 5 multiple-choice questions.
-            
-            Each question should test either:
-            1. The Chinese word for an English concept.
-            2. The meaning of a Chinese word.
-            3. The correct Pinyin for a character.
-            
-            Make it fun and age-appropriate!`,
+            contents: `Generate 5 multiple-choice quiz questions about "${topic}". ${langInstruction}
+            Focus on vocabulary suitable for children.
+            JSON Output only.`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: quizSchema,
@@ -446,28 +378,48 @@ export const generateQuiz = async (topic: string): Promise<QuizQuestion[]> => {
         });
 
         const jsonText = response.text;
-        if (!jsonText) throw new Error("No response from AI");
+        if (!jsonText) throw new Error("No response");
         return JSON.parse(jsonText) as QuizQuestion[];
     } catch (error) {
-        console.error("Quiz generation error", error);
+        console.error("Quiz error", error);
         throw error;
+    }
+};
+
+export const generateVocabulary = async (topic: string, mode: LearningMode = 'CHINESE'): Promise<PinyinChar[]> => {
+    checkApiKey();
+    try {
+        const langInstruction = mode === 'ENGLISH'
+            ? "List 10 English words about the topic with Chinese translation."
+            : "List 10 Chinese words about the topic with Pinyin.";
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Generate vocabulary list for topic: "${topic}". ${langInstruction}
+            JSON Output: [{"char": "Word", "pinyin": "Translation/Pinyin"}]`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: vocabSchema,
+            },
+        });
+
+        const jsonText = response.text;
+        if (!jsonText) throw new Error("No response");
+        return JSON.parse(jsonText) as PinyinChar[];
+    } catch (e) {
+        console.error("Vocab error", e);
+        throw e;
     }
 };
 
 export const generateSpeech = async (text: string, style: 'speech' | 'song' | 'story' = 'speech'): Promise<string | null> => {
   checkApiKey();
   try {
-    let textToProcess = text;
-    if (textToProcess.length > 4500) {
-        textToProcess = textToProcess.substring(0, 4500); 
-    }
+    let textToProcess = text.substring(0, 4500); 
 
     if (style === 'song') {
-        textToProcess = `Speak in Mandarin Chinese. Cheerfully and rhythmically recite the following Chinese nursery rhyme: ${textToProcess}`;
-    } else if (style === 'story') {
-        textToProcess = `Speak in Mandarin Chinese. Read the following Chinese story warmly, slowly, and expressively for a child: ${textToProcess}`;
+        textToProcess = `Speak in Mandarin Chinese. Cheerfully recite: ${textToProcess}`;
     } else {
-        // Enforce Mandarin for single characters/speech
         textToProcess = `Speak in Mandarin Chinese: ${textToProcess}`;
     }
 
@@ -484,10 +436,8 @@ export const generateSpeech = async (text: string, style: 'speech' | 'song' | 's
       }
     });
 
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    return base64Audio || null;
+    return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || null;
   } catch (error) {
-    console.error("TTS error:", error);
     return null;
   }
 };
@@ -497,9 +447,7 @@ export const getSongLyrics = async (title: string): Promise<{chineseTitle: strin
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: `Find the content for the Chinese children's song, rhyme, or story titled "${title}". 
-      If it is a song/rhyme, provide the lyrics. If it is a story, provide the story text.
-      Return the content in Simplified Chinese. Also provide a Chinese title if the input is English.`,
+      contents: `Find Chinese content for "${title}". JSON Format only.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: libraryContentSchema,
@@ -510,7 +458,6 @@ export const getSongLyrics = async (title: string): Promise<{chineseTitle: strin
     if (!jsonText) return null;
     return JSON.parse(jsonText);
   } catch (error) {
-    console.error("Error fetching library content:", error);
-    throw error;
+    return null;
   }
 };

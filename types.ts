@@ -32,3 +32,5 @@ export enum AppTab {
   EBOOKS = 'EBOOKS',
   GAME = 'GAME',
 }
+
+export type LearningMode = 'CHINESE' | 'ENGLISH';
