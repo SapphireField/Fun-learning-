@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Mic, Volume2, StopCircle, Loader2, Square, History, Trash2, MessageSquare, Paperclip, FileText } from 'lucide-react';
+import { Send, Mic, Volume2, StopCircle, Loader2, Square, History, Trash2, MessageSquare, Paperclip, FileText, Camera } from 'lucide-react';
 import { chatWithPanda, generateSpeech, extractTextFromFile } from '../services/geminiService';
 import { playPCM, stopAudio, calculateWeightedActiveIndex } from '../utils/audio';
 import { Message, ChatResponse } from '../types';
@@ -53,6 +53,7 @@ const ChatInterface: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   
   // Animation Refs
   const startTimeRef = useRef<number>(0);
@@ -175,7 +176,9 @@ const ChatInterface: React.FC = () => {
           alert("Error processing file: " + err.message);
       } finally {
           setIsProcessingFile(false);
+          // Reset inputs
           if (fileInputRef.current) fileInputRef.current.value = '';
+          if (cameraInputRef.current) cameraInputRef.current.value = '';
       }
   };
 
@@ -443,13 +446,32 @@ const ChatInterface: React.FC = () => {
       {/* Input Area */}
       <div className="absolute bottom-0 left-0 right-0 bg-white p-4 border-t border-gray-100">
         <div className="flex items-center gap-2">
+            {/* Camera Button */}
+            <button
+                onClick={() => cameraInputRef.current?.click()}
+                disabled={isProcessingFile}
+                className="p-3 bg-gray-100 text-gray-500 hover:text-orange-500 rounded-full transition-colors"
+                title="Take Photo"
+            >
+                {isProcessingFile ? <Loader2 size={24} className="animate-spin" /> : <Camera size={24} />}
+            </button>
+            <input 
+                type="file" 
+                ref={cameraInputRef} 
+                onChange={handleFileUpload} 
+                accept="image/*"
+                capture="environment"
+                className="hidden" 
+            />
+
+            {/* Upload Button */}
             <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isProcessingFile}
                 className="p-3 bg-gray-100 text-gray-500 hover:text-orange-500 rounded-full transition-colors"
                 title="Upload Image/PDF/Word"
             >
-                {isProcessingFile ? <Loader2 size={24} className="animate-spin" /> : <Paperclip size={24} />}
+                <Paperclip size={24} />
             </button>
             <input 
                 type="file" 

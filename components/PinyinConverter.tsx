@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Wand2, Volume2, X, Loader2, History, Trash2, Clock, Square, Upload, Download, FileText, Printer, BookOpen, AlertCircle, Save } from 'lucide-react';
+import { Wand2, Volume2, X, Loader2, History, Trash2, Clock, Square, Upload, Download, FileText, Printer, BookOpen, AlertCircle, Save, Camera } from 'lucide-react';
 import { convertLargeTextToPinyin, generateSpeech, extractTextFromFile } from '../services/geminiService';
 import { playPCM, stopAudio, calculateWeightedActiveIndex } from '../utils/audio';
 import { exportToEpub, exportToHtml, exportToPdf, exportToWord } from '../utils/exportUtils';
@@ -29,6 +29,7 @@ const PinyinConverter: React.FC = () => {
   const [showHistory, setShowHistory] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   
   // Playback Refs for Karaoke
   const startTimeRef = useRef<number>(0);
@@ -212,7 +213,9 @@ const PinyinConverter: React.FC = () => {
         setError(error.message);
     } finally {
         setFileProcessing(false);
+        // Reset inputs so the same file can be selected again
         if (fileInputRef.current) fileInputRef.current.value = '';
+        if (cameraInputRef.current) cameraInputRef.current.value = '';
     }
   };
 
@@ -245,20 +248,40 @@ const PinyinConverter: React.FC = () => {
                 >
                     <History size={20} />
                 </button>
+                {/* Camera Button */}
+                <button 
+                    onClick={() => cameraInputRef.current?.click()}
+                    disabled={fileProcessing || loading}
+                    className="text-orange-500 bg-orange-50 p-2 rounded-full hover:bg-orange-100 transition-colors"
+                    title="Take Photo"
+                >
+                    {fileProcessing ? <Loader2 className="animate-spin" size={20} /> : <Camera size={20} />}
+                </button>
+                {/* Upload Button */}
                 <button 
                     onClick={() => fileInputRef.current?.click()}
                     disabled={fileProcessing || loading}
                     className="text-orange-500 bg-orange-50 p-2 rounded-full hover:bg-orange-100 transition-colors"
                     title="Import from File"
                 >
-                    {fileProcessing ? <Loader2 className="animate-spin" size={20} /> : <Upload size={20} />}
+                    <Upload size={20} />
                 </button>
             </div>
+            
+            {/* Hidden Inputs */}
             <input 
                 type="file" 
                 ref={fileInputRef}
                 onChange={handleFileUpload}
                 accept="image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/epub+zip" 
+                className="hidden" 
+            />
+            <input 
+                type="file" 
+                ref={cameraInputRef}
+                onChange={handleFileUpload}
+                accept="image/*"
+                capture="environment" // Forces rear camera on mobile
                 className="hidden" 
             />
          </div>
