@@ -1,16 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Mic, Volume2, StopCircle, Loader2, Square, History, Trash2, MessageSquare, Paperclip, FileText, Camera, Check, RotateCcw, X } from 'lucide-react';
+import { Send, Mic, Volume2, StopCircle, Loader2, Square, MessageSquare, Paperclip, FileText, Camera, Check, X } from 'lucide-react';
 import { chatWithPanda, generateSpeech, extractTextFromFile } from '../services/geminiService';
 import { playPCM, stopAudio, calculateWeightedActiveIndex } from '../utils/audio';
 import { Message, ChatResponse } from '../types';
 import ChineseChar from './ChineseChar';
-
-interface SavedSession {
-    id: string;
-    title: string;
-    date: number;
-    messages: Message[];
-}
 
 const ChatInterface: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([
@@ -45,11 +38,6 @@ const ChatInterface: React.FC = () => {
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [playbackProgress, setPlaybackProgress] = useState(0);
 
-  // History State
-  const [savedSessions, setSavedSessions] = useState<SavedSession[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
-  const [sessionId, setSessionId] = useState<string>(Date.now().toString());
-  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -63,43 +51,6 @@ const ChatInterface: React.FC = () => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
-
-  // Load history on mount
-  useEffect(() => {
-      try {
-          const saved = localStorage.getItem('chatHistory');
-          if (saved) {
-              setSavedSessions(JSON.parse(saved));
-          }
-      } catch (e) {
-          console.error("Failed to load chat history", e);
-      }
-  }, []);
-
-  // AUTO-SAVE
-  useEffect(() => {
-      if (messages.length <= 1) return; 
-
-      const firstUserMsg = messages.find(m => m.sender === 'user');
-      const title = firstUserMsg 
-        ? (firstUserMsg.content?.substring(0, 20) + (firstUserMsg.content && firstUserMsg.content.length > 20 ? '...' : '')) 
-        : 'New Conversation';
-
-      const currentSession: SavedSession = {
-          id: sessionId,
-          title: title,
-          date: Date.now(),
-          messages: messages
-      };
-
-      setSavedSessions(prev => {
-          const others = prev.filter(s => s.id !== sessionId);
-          const updated = [currentSession, ...others].slice(0, 20); 
-          localStorage.setItem('chatHistory', JSON.stringify(updated));
-          return updated;
-      });
-
-  }, [messages, sessionId]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -268,35 +219,6 @@ const ChatInterface: React.FC = () => {
     }
   };
 
-  const deleteSession = (e: React.MouseEvent, id: string) => {
-      e.stopPropagation();
-      if (!confirm("Delete this saved conversation?")) return;
-      
-      const updated = savedSessions.filter(s => s.id !== id);
-      setSavedSessions(updated);
-      localStorage.setItem('chatHistory', JSON.stringify(updated));
-      
-      if (id === sessionId) {
-          startNewChat();
-      }
-  };
-
-  const loadSession = (session: SavedSession) => {
-      if (messages.length > 2 && session.id !== sessionId && !confirm("Switch conversation?")) return;
-      
-      handleStopGlobal();
-      setSessionId(session.id);
-      setMessages(session.messages);
-      setShowHistory(false);
-  };
-
-  const startNewChat = () => {
-      handleStopGlobal();
-      setSessionId(Date.now().toString());
-      setMessages([messages[0]]); 
-      setShowHistory(false);
-  };
-
   const renderBotMessage = (data: ChatResponse, msgId: string) => {
     const isThisPlaying = playingAudioId === msgId;
     const activeIndex = isThisPlaying ? calculateWeightedActiveIndex(playbackProgress, data.aligned) : -1;
@@ -345,7 +267,7 @@ const ChatInterface: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-gray-50 max-w-md mx-auto w-full relative">
-      {/* Header (Flex Item) */}
+      {/* Header */}
       <div className="bg-white p-4 shadow-sm border-b border-gray-100 z-10 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center">
             <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center mr-3">
@@ -368,59 +290,10 @@ const ChatInterface: React.FC = () => {
                     <Square size={14} className="fill-current" /> Stop
                 </button>
             )}
-
-            <button
-                onClick={() => setShowHistory(!showHistory)}
-                className={`p-2 rounded-full transition-colors ${showHistory ? 'bg-orange-100 text-orange-500' : 'text-gray-400 hover:text-orange-500 hover:bg-orange-50'}`}
-                title="Saved Chats"
-            >
-                <History size={20} />
-            </button>
         </div>
       </div>
 
-      {/* History Overlay */}
-      {showHistory && (
-          <div className="absolute top-[73px] left-0 right-0 bottom-0 bg-white z-20 overflow-y-auto animate-in slide-in-from-top-5 shadow-xl border-t border-gray-100 p-4">
-              <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-bold text-gray-700 text-lg flex items-center"><History className="mr-2"/> Saved Chats</h3>
-                  <button onClick={startNewChat} className="text-sm bg-orange-500 text-white px-3 py-1.5 rounded-full font-bold shadow-sm hover:bg-orange-600">
-                      New Chat
-                  </button>
-              </div>
-              
-              {savedSessions.length === 0 ? (
-                  <div className="text-center py-10 text-gray-400">
-                      <MessageSquare size={48} className="mx-auto mb-2 opacity-20"/>
-                      <p>No saved conversations yet.</p>
-                  </div>
-              ) : (
-                  <div className="space-y-3 pb-20">
-                      {savedSessions.map(session => (
-                          <div 
-                            key={session.id} 
-                            onClick={() => loadSession(session)}
-                            className={`p-4 rounded-xl border cursor-pointer flex justify-between items-center group
-                                ${session.id === sessionId ? 'bg-orange-50 border-orange-200' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'}`}
-                          >
-                              <div>
-                                  <p className="font-bold text-gray-800 truncate max-w-[200px]">{session.title}</p>
-                                  <p className="text-xs text-gray-400 mt-1">{new Date(session.date).toLocaleDateString()} • {session.messages.length} msgs</p>
-                              </div>
-                              <button 
-                                onClick={(e) => deleteSession(e, session.id)}
-                                className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
-                              >
-                                  <Trash2 size={18} />
-                              </button>
-                          </div>
-                      ))}
-                  </div>
-              )}
-          </div>
-      )}
-
-      {/* Messages (Flex Item - Grows) */}
+      {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
         {messages.map((msg) => (
           <div
@@ -456,7 +329,7 @@ const ChatInterface: React.FC = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Area (Flex Item - Fixed at bottom) */}
+      {/* Input Area */}
       <div className="flex-none bg-white p-4 border-t border-gray-100 z-10">
         <div className="flex items-center gap-2">
             {/* Camera Button */}

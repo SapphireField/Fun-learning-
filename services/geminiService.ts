@@ -16,7 +16,7 @@ const chatResponseSchema: Schema = {
   type: Type.OBJECT,
   properties: {
     chinese: { type: Type.STRING, description: "The complete response in simplified Chinese characters" },
-    english: { type: Type.STRING, description: "The English translation of the response" },
+    english: { type: Type.STRING, description: "The English translation or original meaning" },
     aligned: {
       type: Type.ARRAY,
       description: "Breakdown of the response into character-pinyin pairs",
@@ -114,7 +114,12 @@ const processChunkWithRetries = async (chunk: string, index: number, mode: Learn
                    2. Provide concise Chinese meaning.
                    3. Format: "Hello|你好"
                    4. Keep punctuation as separate items with empty translation (e.g. "?|")`
-                : `Break down Chinese text.
+                : `Analyze the input text.
+                   Task: Convert to Chinese Characters with Pinyin.
+                   Logic:
+                   - If input is already Chinese: Provide Pinyin.
+                   - If input is ANOTHER LANGUAGE (English, French, Spanish, etc.): TRANSLATE it to Simplified Chinese first, then provide Pinyin for the translation.
+                   
                    Return PLAIN TEXT list. Format: Character|Pinyin
                    Rules:
                    1. One char per line.
@@ -123,7 +128,7 @@ const processChunkWithRetries = async (chunk: string, index: number, mode: Learn
 
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: `${prompt}\n\nText:\n${chunk}`,
+                contents: `${prompt}\n\nInput Text:\n${chunk}`,
             });
         
             const textOutput = response.text;
@@ -297,7 +302,7 @@ export const extractTextFromMedia = async (base64Data: string, mimeType: string)
             },
           },
           {
-            text: "Transcribe all the Chinese text from this image/document exactly as it appears. Return ONLY the text content. Do not translate. Do not add explanations.",
+            text: "Transcribe text from this image. If it's Chinese, return it. If it's another language, return the original text (Teacher Panda will translate it later).",
           },
         ],
       },
@@ -320,21 +325,26 @@ export const chatWithPanda = async (
 ): Promise<ChatResponse> => {
   checkApiKey();
   try {
-    const recentHistory = history.slice(-6); // Reduced history context for speed
+    const recentHistory = history.slice(-6); 
     
     let promptContext = "History:\n";
     recentHistory.forEach(h => {
         promptContext += `${h.role}: ${h.parts[0].text}\n`;
     });
     
-    // Optimized prompt for speed
     const prompt = `
       ${promptContext}
-      User: ${message}
+      User Input: "${message}"
+
+      Role: Friendly Chinese tutor & Translator.
       
-      Role: Friendly Chinese tutor for kids.
-      Task: Reply in Chinese. Keep it simple.
-      If user sends long text: summarize briefly, teach 1 word.
+      Instructions:
+      1. If User Input is a specific translation request OR in a language other than Chinese (e.g. Spanish, French, German):
+         -> TRANSLATE the meaning into Simplified Chinese.
+         -> Set "english" field to the detected language meaning or original text.
+      2. If User Input is conversational Chinese:
+         -> Reply naturally in simple Chinese.
+      3. Always provide Pinyin in the "aligned" array for the Chinese characters.
       
       OUTPUT JSON ONLY.
       Structure: { "chinese": "...", "english": "...", "aligned": [{"char":"中","pinyin":"zhōng"},...] }
