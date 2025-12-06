@@ -16,7 +16,7 @@ const chatResponseSchema: Schema = {
   type: Type.OBJECT,
   properties: {
     chinese: { type: Type.STRING, description: "The complete response in simplified Chinese characters" },
-    english: { type: Type.STRING, description: "The English translation or original meaning" },
+    english: { type: Type.STRING, description: "The English translation of the response" },
     aligned: {
       type: Type.ARRAY,
       description: "Breakdown of the response into character-pinyin pairs",
@@ -114,12 +114,7 @@ const processChunkWithRetries = async (chunk: string, index: number, mode: Learn
                    2. Provide concise Chinese meaning.
                    3. Format: "Hello|你好"
                    4. Keep punctuation as separate items with empty translation (e.g. "?|")`
-                : `Analyze the input text.
-                   Task: Convert to Chinese Characters with Pinyin.
-                   Logic:
-                   - If input is already Chinese: Provide Pinyin.
-                   - If input is ANOTHER LANGUAGE (English, French, Spanish, etc.): TRANSLATE it to Simplified Chinese first, then provide Pinyin for the translation.
-                   
+                : `Break down Chinese text.
                    Return PLAIN TEXT list. Format: Character|Pinyin
                    Rules:
                    1. One char per line.
@@ -128,7 +123,7 @@ const processChunkWithRetries = async (chunk: string, index: number, mode: Learn
 
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: `${prompt}\n\nInput Text:\n${chunk}`,
+                contents: `${prompt}\n\nText:\n${chunk}`,
             });
         
             const textOutput = response.text;
@@ -196,7 +191,8 @@ export const convertLargeTextToPinyin = async (text: string, onProgress?: (perce
     return combinedResult;
 };
 
-// ... [Existing File Helpers] ...
+// ... [Existing File Helpers: base64ToArrayBuffer, extractTextFromEpub, extractTextFromFile, extractTextFromMedia] ...
+// Helper for Mammoth to process docx
 function base64ToArrayBuffer(base64: string) {
     const binaryString = window.atob(base64);
     const len = binaryString.length;
@@ -301,7 +297,7 @@ export const extractTextFromMedia = async (base64Data: string, mimeType: string)
             },
           },
           {
-            text: "Transcribe text from this image. If it's Chinese, return it. If it's another language, return the original text (Teacher Panda will translate it later).",
+            text: "Transcribe all the Chinese text from this image/document exactly as it appears. Return ONLY the text content. Do not translate. Do not add explanations.",
           },
         ],
       },
@@ -324,29 +320,21 @@ export const chatWithPanda = async (
 ): Promise<ChatResponse> => {
   checkApiKey();
   try {
-    const recentHistory = history.slice(-6); 
+    const recentHistory = history.slice(-6); // Reduced history context for speed
     
     let promptContext = "History:\n";
     recentHistory.forEach(h => {
         promptContext += `${h.role}: ${h.parts[0].text}\n`;
     });
     
+    // Optimized prompt for speed
     const prompt = `
       ${promptContext}
-      User Input: "${message}"
-
-      Role: Friendly Chinese tutor & Translator.
+      User: ${message}
       
-      Instructions:
-      1. If User Input is a specific translation request OR in a language other than Chinese (e.g. Spanish, French, German):
-         -> TRANSLATE the meaning into Simplified Chinese.
-         -> Set "english" field to the detected language meaning or original text.
-      2. If User Input is conversational Chinese:
-         -> Reply naturally in simple Chinese.
-      3. If the user asks for a STORY:
-         -> Generate a creative, engaging children's story (approx 150-300 characters). 
-         -> Keep language simple and suitable for kids.
-      4. Always provide Pinyin in the "aligned" array for the Chinese characters.
+      Role: Friendly Chinese tutor for kids.
+      Task: Reply in Chinese. Keep it simple.
+      If user sends long text: summarize briefly, teach 1 word.
       
       OUTPUT JSON ONLY.
       Structure: { "chinese": "...", "english": "...", "aligned": [{"char":"中","pinyin":"zhōng"},...] }
@@ -432,15 +420,7 @@ export const generateSpeech = async (text: string, style: 'speech' | 'song' | 's
     if (style === 'song') {
         textToProcess = `Speak in Mandarin Chinese. Cheerfully recite: ${textToProcess}`;
     } else {
-        // Detect if text contains Chinese characters
-        const hasChinese = /[\u4e00-\u9fa5]/.test(textToProcess);
-        
-        if (hasChinese) {
-             textToProcess = `Speak in Mandarin Chinese: ${textToProcess}`;
-        } else {
-             // If pure English, just read it normally (Puck handles English well)
-             textToProcess = `Speak clearly: ${textToProcess}`;
-        }
+        textToProcess = `Speak in Mandarin Chinese: ${textToProcess}`;
     }
 
     const response = await ai.models.generateContent({

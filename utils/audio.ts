@@ -3,9 +3,8 @@ let currentSource: AudioBufferSourceNode | null = null;
 
 function getAudioContext() {
   if (!audioContext) {
-    // Remove sampleRate: 24000 constraint to prevent crashes on mobile devices that don't support it.
-    // We will handle the 24kHz content in the buffer creation.
-    audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    // Initialize AudioContext with 24kHz sample rate as used by Gemini TTS
+    audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
   }
   return audioContext;
 }
@@ -18,15 +17,6 @@ function decodeBase64(base64: string): Uint8Array {
     bytes[i] = binaryString.charCodeAt(i);
   }
   return bytes;
-}
-
-// Function to "warm up" the audio context on user interaction (touch/click)
-// Essential for iOS Safari
-export function prepareAudio() {
-    const ctx = getAudioContext();
-    if (ctx.state === 'suspended') {
-        ctx.resume();
-    }
 }
 
 export function stopAudio() {
@@ -47,8 +37,6 @@ export async function playPCM(base64Data: string, onStart?: (duration: number) =
 
   try {
     const ctx = getAudioContext();
-    
-    // Ensure context is running (redundant check, but safe)
     if (ctx.state === 'suspended') {
       await ctx.resume();
     }
@@ -64,8 +52,6 @@ export async function playPCM(base64Data: string, onStart?: (duration: number) =
       float32Data[i] = int16Data[i] / 32768.0;
     }
 
-    // Create buffer at 24kHz (Gemini native rate). 
-    // The AudioContext (which might be 44.1k or 48k) will handle resampling automatically.
     const buffer = ctx.createBuffer(1, float32Data.length, 24000);
     buffer.getChannelData(0).set(float32Data);
 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Mic, Volume2, StopCircle, Loader2, Square, MessageSquare, Paperclip, FileText, Camera, Check, X, BookOpen } from 'lucide-react';
+import { Send, Mic, Volume2, StopCircle, Loader2, Square, MessageSquare, Paperclip, FileText, Camera, Check, X } from 'lucide-react';
 import { chatWithPanda, generateSpeech, extractTextFromFile } from '../services/geminiService';
 import { playPCM, stopAudio, calculateWeightedActiveIndex } from '../utils/audio';
 import { Message, ChatResponse } from '../types';
@@ -13,7 +13,7 @@ const ChatInterface: React.FC = () => {
       timestamp: Date.now(),
       data: {
         chinese: "你好！我是你的中文老师。",
-        english: "Hello! I am your Chinese teacher. You can upload pictures, documents, or ask me to tell a story!",
+        english: "Hello! I am your Chinese teacher. You can upload pictures or documents, and I'll help you read them!",
         aligned: [
             { char: "你", pinyin: "nǐ" },
             { char: "好", pinyin: "hǎo" },
@@ -42,7 +42,6 @@ const ChatInterface: React.FC = () => {
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   
   // Animation Refs
   const startTimeRef = useRef<number>(0);
@@ -60,14 +59,6 @@ const ChatInterface: React.FC = () => {
         if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
   }, []);
-
-  // Auto-resize textarea
-  useEffect(() => {
-    if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
-        textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
-    }
-  }, [input]);
 
   useEffect(() => {
     if ('webkitSpeechRecognition' in window) {
@@ -162,11 +153,6 @@ const ChatInterface: React.FC = () => {
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsLoading(true);
-    
-    // Reset height manually after send
-    if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
-    }
 
     const history = messages.map(m => ({
         role: m.sender === 'user' ? 'user' : 'model',
@@ -345,22 +331,12 @@ const ChatInterface: React.FC = () => {
 
       {/* Input Area */}
       <div className="flex-none bg-white p-4 border-t border-gray-100 z-10">
-        <div className="flex items-end gap-2">
-            {/* Story Button */}
-            <button
-                onClick={() => setInput("Tell me a story about ")}
-                disabled={isProcessingFile}
-                className="p-3 mb-[2px] bg-gray-100 text-gray-500 hover:text-orange-500 rounded-full transition-colors flex-shrink-0"
-                title="Tell a Story"
-            >
-                <BookOpen size={24} />
-            </button>
-
+        <div className="flex items-center gap-2">
             {/* Camera Button */}
             <button
                 onClick={() => cameraInputRef.current?.click()}
                 disabled={isProcessingFile}
-                className="p-3 mb-[2px] bg-gray-100 text-gray-500 hover:text-orange-500 rounded-full transition-colors flex-shrink-0"
+                className="p-3 bg-gray-100 text-gray-500 hover:text-orange-500 rounded-full transition-colors flex-shrink-0"
                 title="Take Photo"
             >
                 {isProcessingFile ? <Loader2 size={24} className="animate-spin" /> : <Camera size={24} />}
@@ -378,7 +354,7 @@ const ChatInterface: React.FC = () => {
             <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isProcessingFile}
-                className="p-3 mb-[2px] bg-gray-100 text-gray-500 hover:text-orange-500 rounded-full transition-colors flex-shrink-0"
+                className="p-3 bg-gray-100 text-gray-500 hover:text-orange-500 rounded-full transition-colors flex-shrink-0"
                 title="Upload Image/PDF/Word"
             >
                 <Paperclip size={24} />
@@ -393,7 +369,7 @@ const ChatInterface: React.FC = () => {
 
             <button
                 onClick={toggleListening}
-                className={`p-3 mb-[2px] rounded-full transition-all flex-shrink-0 ${
+                className={`p-3 rounded-full transition-all flex-shrink-0 ${
                     isListening 
                     ? 'bg-red-100 text-red-500 animate-pulse' 
                     : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
@@ -402,25 +378,19 @@ const ChatInterface: React.FC = () => {
                 {isListening ? <StopCircle size={24} /> : <Mic size={24} />}
             </button>
             
-            <textarea
-                ref={textareaRef}
+            <input
+                type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSend();
-                    }
-                }}
-                rows={1}
+                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                 placeholder={isProcessingFile ? "Reading file..." : isListening ? "Listening..." : "Say something..."}
-                className="flex-1 bg-gray-100 rounded-3xl px-5 py-3 outline-none focus:ring-2 focus:ring-blue-200 transition-all chinese-font font-medium min-w-0 resize-none max-h-[120px] overflow-y-auto"
+                className="flex-1 bg-gray-100 rounded-full px-5 py-3 outline-none focus:ring-2 focus:ring-blue-200 transition-all chinese-font font-medium min-w-0"
             />
             
             <button
                 onClick={() => handleSend()}
                 disabled={!input.trim() || isLoading}
-                className={`p-3 mb-[2px] rounded-full transition-all flex-shrink-0 ${
+                className={`p-3 rounded-full transition-all flex-shrink-0 ${
                     input.trim() 
                     ? 'bg-blue-500 text-white shadow-md hover:scale-105' 
                     : 'bg-gray-200 text-gray-400'

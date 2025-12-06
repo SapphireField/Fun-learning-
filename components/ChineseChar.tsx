@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { prepareAudio } from '../utils/audio';
 
 interface ChineseCharProps {
   char: string;
@@ -24,11 +23,7 @@ const ChineseChar: React.FC<ChineseCharProps> = ({ char, pinyin, size = 'md', is
   const isPunctuation = !pinyin || pinyin.trim() === '';
 
   const handleCharClick = async (e: React.MouseEvent) => {
-    e.stopPropagation(); 
-    
-    // Critical: Warm up audio context immediately on user interaction for Mobile Safari
-    prepareAudio();
-
+    e.stopPropagation(); // Prevent bubbling if nested
     if (onPlayAudio && !isLoadingAudio) {
         setIsLoadingAudio(true);
         try {
