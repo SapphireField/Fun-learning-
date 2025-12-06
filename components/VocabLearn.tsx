@@ -1,18 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Wand2, Volume2, X, Loader2, History, Trash2, Clock, Square, Upload, Download, FileText, Printer, BookOpen, AlertCircle, Save, Camera, Check, RotateCcw } from 'lucide-react';
+import { Wand2, Volume2, X, Loader2, Upload, Camera, Check, AlertCircle, Save, Square, BookOpen } from 'lucide-react';
 import { convertLargeTextToPinyin, generateSpeech, extractTextFromFile } from '../services/geminiService';
 import { playPCM, stopAudio, calculateWeightedActiveIndexForTokens } from '../utils/audio';
-import { exportToHtml, exportToPdf, exportToWord } from '../utils/exportUtils';
 import { PinyinChar, LearningMode } from '../types';
 import WordCard from './WordCard';
 import FlashcardMode from './FlashcardMode';
-
-interface HistoryItem {
-    id: string;
-    text: string;
-    data: PinyinChar[];
-    timestamp: number;
-}
 
 const VocabLearn: React.FC<{ mode: LearningMode }> = ({ mode }) => {
   const [inputText, setInputText] = useState('');
@@ -22,7 +14,6 @@ const VocabLearn: React.FC<{ mode: LearningMode }> = ({ mode }) => {
   const [audioLoading, setAudioLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackProgress, setPlaybackProgress] = useState(0);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [fileProcessing, setFileProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -32,8 +23,6 @@ const VocabLearn: React.FC<{ mode: LearningMode }> = ({ mode }) => {
   // Preview State
   const [previewFile, setPreviewFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  
-  const [showHistory, setShowHistory] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -41,15 +30,6 @@ const VocabLearn: React.FC<{ mode: LearningMode }> = ({ mode }) => {
   const startTimeRef = useRef<number>(0);
   const durationRef = useRef<number>(0);
   const requestRef = useRef<number | undefined>(undefined);
-
-  useEffect(() => {
-    try {
-        const saved = localStorage.getItem('vocabHistory');
-        if (saved) {
-            setHistory(JSON.parse(saved));
-        }
-    } catch (e) {}
-  }, []);
 
   useEffect(() => {
     return () => {
@@ -64,45 +44,6 @@ const VocabLearn: React.FC<{ mode: LearningMode }> = ({ mode }) => {
     }
   }, [previewUrl]);
 
-  const saveToHistory = (text: string, data: PinyinChar[]) => {
-      try {
-        const newItem: HistoryItem = {
-            id: Date.now().toString(),
-            text: text.trim(),
-            data,
-            timestamp: Date.now()
-        };
-        const updatedHistory = [newItem, ...history.filter(h => h.text !== text.trim())].slice(50);
-        setHistory(updatedHistory);
-        localStorage.setItem('vocabHistory', JSON.stringify(updatedHistory));
-      } catch (e) {}
-  };
-
-  const handleManualSave = () => {
-      if (result.length > 0 && inputText) {
-          saveToHistory(inputText, result);
-          alert("Saved to History!");
-      } else {
-          alert("Nothing to save!");
-      }
-  };
-
-  const deleteHistoryItem = (e: React.MouseEvent, id: string) => {
-      e.stopPropagation();
-      const updated = history.filter(h => h.id !== id);
-      setHistory(updated);
-      localStorage.setItem('vocabHistory', JSON.stringify(updated));
-  };
-
-  const loadHistoryItem = (item: HistoryItem) => {
-      stopAudio();
-      setIsPlaying(false);
-      setInputText(item.text);
-      setResult(item.data);
-      setShowHistory(false);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
   const handleConvert = async () => {
     if (!inputText.trim()) return;
     stopAudio();
@@ -110,19 +51,11 @@ const VocabLearn: React.FC<{ mode: LearningMode }> = ({ mode }) => {
     setError(null);
     setConversionProgress(0);
     
-    const existingItem = history.find(h => h.text === inputText.trim());
-    if (existingItem) {
-        setResult(existingItem.data);
-        saveToHistory(existingItem.text, existingItem.data);
-        return;
-    }
-
     setLoading(true);
     try {
         const data = await convertLargeTextToPinyin(inputText, setConversionProgress, mode);
         if (data.length > 0) {
             setResult(data);
-            saveToHistory(inputText, data);
         }
     } catch (e: any) {
         setError(e.message || "Error occurred");
@@ -221,7 +154,6 @@ const VocabLearn: React.FC<{ mode: LearningMode }> = ({ mode }) => {
     }
   };
   
-  // Transform PinyinChar[] to simple token list for weight calculation
   const tokens = result.map(r => ({ text: r.char }));
   const activeIndex = isPlaying ? calculateWeightedActiveIndexForTokens(playbackProgress, tokens) : -1;
 
@@ -256,7 +188,6 @@ const VocabLearn: React.FC<{ mode: LearningMode }> = ({ mode }) => {
                 <Wand2 className="mr-2" /> Word Magic
             </h2>
             <div className="flex gap-2">
-                <button onClick={() => setShowHistory(true)} className="text-gray-400 bg-blue-50 p-2 rounded-full hover:bg-blue-100"><History size={20} /></button>
                 <button onClick={() => cameraInputRef.current?.click()} disabled={fileProcessing} className="text-blue-500 bg-blue-50 p-2 rounded-full hover:bg-blue-100">
                     {fileProcessing ? <Loader2 className="animate-spin" size={20} /> : <Camera size={20} />}
                 </button>
@@ -298,7 +229,6 @@ const VocabLearn: React.FC<{ mode: LearningMode }> = ({ mode }) => {
             <div className="flex justify-between items-center mb-4">
                 <h3 className="text-xl font-bold text-yellow-600 fun-font">Result</h3>
                 <div className="flex gap-1">
-                     <button onClick={handleManualSave} className="p-2 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100"><Save size={18} /></button>
                      <button onClick={() => setShowFlashcards(true)} className="p-2 rounded-full bg-yellow-50 text-yellow-600 hover:bg-yellow-100" title="Study Flashcards"><BookOpen size={18} /></button>
                      <div className="w-px h-8 bg-gray-200 mx-1"></div>
                      <button 
@@ -323,26 +253,6 @@ const VocabLearn: React.FC<{ mode: LearningMode }> = ({ mode }) => {
                 ))}
             </div>
         </div>
-      )}
-      
-      {showHistory && (
-          <div className="absolute inset-0 z-20 bg-blue-50 overflow-y-auto p-4 pb-24 animate-in slide-in-from-bottom-5">
-              <div className="flex justify-between items-center mb-4 bg-white p-4 rounded-xl shadow-sm">
-                  <h3 className="font-bold text-gray-700 flex items-center"><History className="mr-2"/> History</h3>
-                  <button onClick={() => setShowHistory(false)} className="p-2 bg-gray-100 rounded-full"><X size={20} /></button>
-              </div>
-              <div className="space-y-3">
-                {history.map((item) => (
-                    <div key={item.id} onClick={() => loadHistoryItem(item)} className="bg-white p-4 rounded-xl shadow-sm flex justify-between items-center active:bg-blue-50 cursor-pointer">
-                        <div className="overflow-hidden">
-                            <p className="text-gray-800 font-medium truncate">{item.text}</p>
-                            <p className="text-xs text-gray-400 mt-1">{new Date(item.timestamp).toLocaleDateString()}</p>
-                        </div>
-                        <button onClick={(e) => deleteHistoryItem(e, item.id)} className="p-2 text-gray-300 hover:text-red-500"><Trash2 size={18} /></button>
-                    </div>
-                ))}
-              </div>
-          </div>
       )}
     </div>
   );

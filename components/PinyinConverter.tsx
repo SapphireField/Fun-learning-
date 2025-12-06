@@ -5,6 +5,7 @@ import { playPCM, stopAudio, calculateWeightedActiveIndex } from '../utils/audio
 import { exportToEpub, exportToHtml, exportToPdf, exportToWord } from '../utils/exportUtils';
 import { PinyinChar } from '../types';
 import ChineseChar from './ChineseChar';
+import { prepareAudio } from '../utils/audio';
 
 const PinyinConverter: React.FC = () => {
   const [inputText, setInputText] = useState('');
@@ -98,10 +99,18 @@ const PinyinConverter: React.FC = () => {
 
     if (!inputText || audioLoading) return;
     
+    prepareAudio(); // Unlock audio on mobile
+
     setAudioLoading(true);
     setError(null);
     try {
-        const base64Audio = await generateSpeech(inputText, 'speech');
+        // Construct the audio from the result (characters) rather than raw input
+        // This ensures correct pronunciation (e.g. English translation gets read as English)
+        const textToRead = result.length > 0 
+            ? result.map(i => i.char).join('') 
+            : inputText;
+
+        const base64Audio = await generateSpeech(textToRead, 'speech');
         if (base64Audio) {
             setIsPlaying(true);
             await playPCM(base64Audio, (duration) => {
@@ -118,10 +127,11 @@ const PinyinConverter: React.FC = () => {
   };
   
   const handlePlayChar = async (char: string) => {
-    // Stop any main audio if playing
     stopAudio();
     setIsPlaying(false);
     if (requestRef.current) cancelAnimationFrame(requestRef.current);
+    
+    prepareAudio(); // Unlock audio on mobile
 
     try {
         const base64Audio = await generateSpeech(char, 'speech');

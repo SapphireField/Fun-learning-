@@ -5,6 +5,7 @@ import { playPCM, stopAudio, calculateWeightedActiveIndex } from '../utils/audio
 import { PinyinChar } from '../types';
 import ChineseChar from './ChineseChar';
 import { STATIC_LIBRARY_DATA } from '../data/libraryData';
+import { prepareAudio } from '../utils/audio';
 
 interface LibraryItem {
   id: string;
@@ -82,6 +83,52 @@ const DEFAULT_ITEMS: LibraryItem[] = [
     content: '一只乌鸦口渴了，到处找水喝。它看见一个瓶子，瓶子里有水。可是瓶子很高，瓶口很小，里边的水又少，它喝不着。怎么办呢？乌鸦看见旁边有许多小石子。它把小石子一个一个地衔起来，放到瓶子里。瓶子里的水渐渐升高了，乌鸦就喝着水了。',
     englishContent: 'A crow was thirsty and looked for water everywhere. He saw a bottle with water in it. But the bottle was tall, the neck was narrow, and there was little water inside, so he couldn\'t reach it. What to do? The crow saw many small pebbles nearby. He picked up the pebbles one by one and put them into the bottle. The water in the bottle gradually rose, and the crow could drink the water.',
     type: 'story'
+  },
+  // New Items
+  {
+    id: 'marylamb',
+    title: 'Mary Had a Little Lamb',
+    chineseTitle: '玛丽有只小羔羊',
+    color: 'bg-pink-300',
+    content: '玛丽有只小羔羊，小羔羊，小羔羊。玛丽有只小羔羊，它的毛像雪一样白。不管玛丽去哪里，小羔羊总会跟着她。',
+    englishContent: 'Mary had a little lamb, little lamb, little lamb. Mary had a little lamb, its fleece was white as snow. And everywhere that Mary went, the lamb was sure to go.',
+    type: 'rhyme'
+  },
+  {
+    id: 'pigs',
+    title: 'The Three Little Pigs',
+    chineseTitle: '三只小猪',
+    color: 'bg-orange-300',
+    content: '有三只小猪，他们想盖房子。第一只小猪用草盖房子，第二只小猪用木头盖房子，第三只小猪用砖头盖房子。大灰狼来了，吹倒了草房子和木头房子，但是吹不倒砖头房子。',
+    englishContent: 'There were three little pigs who wanted to build houses. The first pig built a house of straw, the second pig built a house of sticks, and the third pig built a house of bricks. The big bad wolf came and blew down the straw house and the stick house, but could not blow down the brick house.',
+    type: 'story'
+  },
+  {
+    id: 'headshoulders',
+    title: 'Head Shoulders Knees and Toes',
+    chineseTitle: '头肩膀膝盖脚趾',
+    color: 'bg-blue-300',
+    content: '头，肩膀，膝盖，脚趾，膝盖，脚趾。头，肩膀，膝盖，脚趾，膝盖，脚趾。眼，耳，鼻和口。头，肩膀，膝盖，脚趾，膝盖，脚趾。',
+    englishContent: 'Head, shoulders, knees and toes, knees and toes. Head, shoulders, knees and toes, knees and toes. And eyes and ears and mouth and nose. Head, shoulders, knees and toes, knees and toes.',
+    type: 'rhyme'
+  },
+  {
+    id: 'tortoise',
+    title: 'The Tortoise and the Hare',
+    chineseTitle: '龟兔赛跑',
+    color: 'bg-green-300',
+    content: '兔子和乌龟赛跑。兔子跑得快，但是它在半路上睡觉了。乌龟跑得慢，但是它不停地跑。最后，乌龟赢了，兔子输了。',
+    englishContent: 'The hare and the tortoise had a race. The hare ran fast, but he slept halfway. The tortoise ran slowly, but he kept running. Finally, the tortoise won and the hare lost.',
+    type: 'story'
+  },
+  {
+    id: 'rowboat',
+    title: 'Row Your Boat',
+    chineseTitle: '划船',
+    color: 'bg-cyan-300',
+    content: '划，划，划小船，轻轻顺流下。快快乐乐，快快乐乐，人生像梦境。',
+    englishContent: 'Row, row, row your boat, gently down the stream. Merrily, merrily, merrily, merrily, life is but a dream.',
+    type: 'rhyme'
   }
 ];
 
@@ -94,11 +141,10 @@ const SongLibrary: React.FC = () => {
   const [showEnglish, setShowEnglish] = useState(false);
   const [playbackProgress, setPlaybackProgress] = useState(0); // 0 to 1
   
-  // Custom Items State
-  const [customItems, setCustomItems] = useState<LibraryItem[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [searchTitle, setSearchTitle] = useState('');
   const [addingLoading, setAddingLoading] = useState(false);
+  const [tempCustomItem, setTempCustomItem] = useState<LibraryItem | null>(null); // Only for current session
 
   // Playback Refs
   const startTimeRef = useRef<number>(0);
@@ -106,26 +152,11 @@ const SongLibrary: React.FC = () => {
   const requestRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
-    // Load custom items from local storage
-    const saved = localStorage.getItem('customItems');
-    if (saved) {
-      try {
-        setCustomItems(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to load custom items");
-      }
-    }
-    
     return () => {
       stopAudio();
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
   }, []);
-
-  const saveCustomItems = (items: LibraryItem[]) => {
-      setCustomItems(items);
-      localStorage.setItem('customItems', JSON.stringify(items));
-  };
 
   const handleSelectItem = async (item: LibraryItem) => {
     setSelectedItem(item);
@@ -141,7 +172,7 @@ const SongLibrary: React.FC = () => {
         return;
     }
 
-    // 2. Check if we have cached pinyin data for custom items
+    // 2. Check if we have cached pinyin data (in memory)
     if (item.savedPinyinData && item.savedPinyinData.length > 0) {
         setContentData(item.savedPinyinData);
         return;
@@ -152,13 +183,8 @@ const SongLibrary: React.FC = () => {
     const data = await convertLargeTextToPinyin(item.content);
     setContentData(data);
     
-    // Cache the result to the custom item so we don't need to fetch again
-    if (!DEFAULT_ITEMS.find(i => i.id === item.id)) {
-        const updatedCustomItems = customItems.map(ci => 
-            ci.id === item.id ? { ...ci, savedPinyinData: data } : ci
-        );
-        saveCustomItems(updatedCustomItems);
-    }
+    // Cache in memory for this session
+    item.savedPinyinData = data;
     
     setLoading(false);
   };
@@ -198,6 +224,8 @@ const SongLibrary: React.FC = () => {
     }
 
     if (!selectedItem) return;
+    
+    prepareAudio();
 
     setAudioLoading(true);
     // Request appropriate style: 'song' for rhymes, 'story' for stories
@@ -236,8 +264,9 @@ const SongLibrary: React.FC = () => {
                 type: result.type as 'rhyme' | 'story' || 'rhyme'
             };
             
-            const updatedCustom = [newItem, ...customItems];
-            saveCustomItems(updatedCustom);
+            // Just open it directly, don't save to a list
+            setTempCustomItem(newItem);
+            handleSelectItem(newItem);
             
             setIsAdding(false);
             setSearchTitle('');
@@ -249,14 +278,6 @@ const SongLibrary: React.FC = () => {
         alert("Error adding item");
     } finally {
         setAddingLoading(false);
-    }
-  };
-
-  const deleteCustomItem = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    if (window.confirm("Delete this story from your history?")) {
-        const updated = customItems.filter(s => s.id !== id);
-        saveCustomItems(updated);
     }
   };
 
@@ -418,10 +439,10 @@ const SongLibrary: React.FC = () => {
 
       {isAdding && (
           <div className="bg-white rounded-2xl p-4 shadow-lg border-2 border-orange-200 mb-6 animate-in slide-in-from-top-4 fade-in">
-             <h3 className="font-bold text-gray-700 mb-3 flex items-center"><Search size={18} className="mr-2 text-orange-500"/> Add New</h3>
+             <h3 className="font-bold text-gray-700 mb-3 flex items-center"><Search size={18} className="mr-2 text-orange-500"/> Find Story</h3>
              <input 
                 className="w-full p-3 bg-gray-50 rounded-lg border border-gray-200 mb-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200"
-                placeholder="Title (e.g., Kong Rong Gives Pears)"
+                placeholder="Title (e.g., Peppa Pig)"
                 value={searchTitle}
                 onChange={e => setSearchTitle(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleAddCustom()}
@@ -439,7 +460,7 @@ const SongLibrary: React.FC = () => {
                     className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-bold shadow-md hover:bg-orange-600 flex items-center"
                  >
                     {addingLoading && <Loader2 className="animate-spin mr-2" size={14}/>}
-                    Search & Add
+                    Read Now
                  </button>
              </div>
           </div>
@@ -469,40 +490,9 @@ const SongLibrary: React.FC = () => {
             </div>
         ))}
 
-        {/* Custom Items Header if exists */}
-        {customItems.length > 0 && (
-             <h3 className="text-gray-500 font-bold px-2 pt-2 pb-1 text-sm uppercase tracking-wider">Recently Added</h3>
-        )}
-
-        {/* Custom Items */}
-        {customItems.map((item) => (
-            <div 
-                key={item.id}
-                onClick={() => handleSelectItem(item)}
-                className="bg-white rounded-2xl p-4 shadow-sm border-2 border-transparent hover:border-blue-200 hover:shadow-md transition-all cursor-pointer flex items-center group"
-            >
-                <div className={`w-16 h-16 rounded-xl bg-blue-400 flex items-center justify-center text-white mr-4 shadow-sm group-hover:scale-110 transition-transform flex-shrink-0 relative overflow-hidden`}>
-                     {item.type === 'story' ? <BookOpen size={28} /> : <Music size={28} />}
-                </div>
-                <div className="overflow-hidden flex-1">
-                    <h3 className="text-xl font-bold text-gray-800 fun-font truncate">{item.chineseTitle}</h3>
-                    <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 uppercase">{item.type}</span>
-                        <p className="text-gray-500 text-sm truncate">{item.title}</p>
-                    </div>
-                </div>
-                <button
-                    onClick={(e) => deleteCustomItem(e, item.id)}
-                    className="ml-2 w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-red-100 hover:text-red-500 transition-colors flex-shrink-0 z-10"
-                >
-                    <Trash2 size={18} />
-                </button>
-            </div>
-        ))}
-        
-        {customItems.length === 0 && DEFAULT_ITEMS.length > 0 && (
+        {DEFAULT_ITEMS.length > 0 && (
              <div className="text-center py-8 text-gray-400 border-t border-gray-100 mt-8">
-                 <p className="text-sm">Tap the + button to search and add more stories!</p>
+                 <p className="text-sm">Tap the + button to read any story!</p>
              </div>
         )}
       </div>
