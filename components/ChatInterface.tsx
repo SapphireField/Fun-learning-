@@ -62,7 +62,7 @@ const ChatInterface: React.FC = () => {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, isLoading]);
 
   // Load history on mount
   useEffect(() => {
@@ -332,7 +332,7 @@ const ChatInterface: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-gray-50 max-w-md mx-auto w-full relative">
-      {/* Header */}
+      {/* Header (Flex Item) */}
       <div className="bg-white p-4 shadow-sm border-b border-gray-100 z-10 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center">
             <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center mr-3">
@@ -366,7 +366,7 @@ const ChatInterface: React.FC = () => {
         </div>
       </div>
 
-      {/* History Overlay */}
+      {/* History Overlay (Absolute within relative container, but above flex items) */}
       {showHistory && (
           <div className="absolute top-[73px] left-0 right-0 bottom-0 bg-white z-20 overflow-y-auto animate-in slide-in-from-top-5 shadow-xl border-t border-gray-100 p-4">
               <div className="flex justify-between items-center mb-4">
@@ -407,8 +407,8 @@ const ChatInterface: React.FC = () => {
           </div>
       )}
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar pb-24">
+      {/* Messages (Flex Item - Grows) */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
         {messages.map((msg) => (
           <div
             key={msg.id}
@@ -443,14 +443,14 @@ const ChatInterface: React.FC = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Area */}
-      <div className="absolute bottom-0 left-0 right-0 bg-white p-4 border-t border-gray-100">
+      {/* Input Area (Flex Item - Fixed at bottom) */}
+      <div className="flex-none bg-white p-4 border-t border-gray-100 z-10">
         <div className="flex items-center gap-2">
             {/* Camera Button */}
             <button
                 onClick={() => cameraInputRef.current?.click()}
                 disabled={isProcessingFile}
-                className="p-3 bg-gray-100 text-gray-500 hover:text-orange-500 rounded-full transition-colors"
+                className="p-3 bg-gray-100 text-gray-500 hover:text-orange-500 rounded-full transition-colors flex-shrink-0"
                 title="Take Photo"
             >
                 {isProcessingFile ? <Loader2 size={24} className="animate-spin" /> : <Camera size={24} />}
@@ -468,7 +468,7 @@ const ChatInterface: React.FC = () => {
             <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isProcessingFile}
-                className="p-3 bg-gray-100 text-gray-500 hover:text-orange-500 rounded-full transition-colors"
+                className="p-3 bg-gray-100 text-gray-500 hover:text-orange-500 rounded-full transition-colors flex-shrink-0"
                 title="Upload Image/PDF/Word"
             >
                 <Paperclip size={24} />
@@ -483,7 +483,7 @@ const ChatInterface: React.FC = () => {
 
             <button
                 onClick={toggleListening}
-                className={`p-3 rounded-full transition-all ${
+                className={`p-3 rounded-full transition-all flex-shrink-0 ${
                     isListening 
                     ? 'bg-red-100 text-red-500 animate-pulse' 
                     : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
@@ -498,13 +498,13 @@ const ChatInterface: React.FC = () => {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                 placeholder={isProcessingFile ? "Reading file..." : isListening ? "Listening..." : "Say something..."}
-                className="flex-1 bg-gray-100 rounded-full px-5 py-3 outline-none focus:ring-2 focus:ring-blue-200 transition-all chinese-font font-medium"
+                className="flex-1 bg-gray-100 rounded-full px-5 py-3 outline-none focus:ring-2 focus:ring-blue-200 transition-all chinese-font font-medium min-w-0"
             />
             
             <button
                 onClick={() => handleSend()}
                 disabled={!input.trim() || isLoading}
-                className={`p-3 rounded-full transition-all ${
+                className={`p-3 rounded-full transition-all flex-shrink-0 ${
                     input.trim() 
                     ? 'bg-blue-500 text-white shadow-md hover:scale-105' 
                     : 'bg-gray-200 text-gray-400'
