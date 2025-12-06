@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Mic, Volume2, StopCircle, Loader2, Square, History, Trash2, MessageSquare, Paperclip, FileText, Camera } from 'lucide-react';
+import { Send, Mic, Volume2, StopCircle, Loader2, Square, History, Trash2, MessageSquare, Paperclip, FileText, Camera, Check, RotateCcw, X } from 'lucide-react';
 import { chatWithPanda, generateSpeech, extractTextFromFile } from '../services/geminiService';
 import { playPCM, stopAudio, calculateWeightedActiveIndex } from '../utils/audio';
 import { Message, ChatResponse } from '../types';
@@ -49,6 +49,10 @@ const ChatInterface: React.FC = () => {
   const [savedSessions, setSavedSessions] = useState<SavedSession[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [sessionId, setSessionId] = useState<string>(Date.now().toString());
+  
+  // Image Preview State
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -106,6 +110,7 @@ const ChatInterface: React.FC = () => {
     return () => {
         stopAudio();
         if (requestRef.current) cancelAnimationFrame(requestRef.current);
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, []);
 
@@ -158,10 +163,32 @@ const ChatInterface: React.FC = () => {
     setPlaybackProgress(0);
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
 
+      if (file.type.startsWith('image/')) {
+        setPreviewFile(file);
+        const url = URL.createObjectURL(file);
+        setPreviewUrl(url);
+      } else {
+        processFile(file);
+      }
+
+      // Reset inputs
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (cameraInputRef.current) cameraInputRef.current.value = '';
+  };
+  
+  const cancelPreview = () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+      setPreviewFile(null);
+  };
+
+  const processFile = async (file: File) => {
+      setPreviewUrl(null);
+      setPreviewFile(null);
       setIsProcessingFile(true);
       
       try {
@@ -176,9 +203,6 @@ const ChatInterface: React.FC = () => {
           alert("Error processing file: " + err.message);
       } finally {
           setIsProcessingFile(false);
-          // Reset inputs
-          if (fileInputRef.current) fileInputRef.current.value = '';
-          if (cameraInputRef.current) cameraInputRef.current.value = '';
       }
   };
 
@@ -366,7 +390,7 @@ const ChatInterface: React.FC = () => {
         </div>
       </div>
 
-      {/* History Overlay (Absolute within relative container, but above flex items) */}
+      {/* History Overlay */}
       {showHistory && (
           <div className="absolute top-[73px] left-0 right-0 bottom-0 bg-white z-20 overflow-y-auto animate-in slide-in-from-top-5 shadow-xl border-t border-gray-100 p-4">
               <div className="flex justify-between items-center mb-4">
@@ -458,7 +482,7 @@ const ChatInterface: React.FC = () => {
             <input 
                 type="file" 
                 ref={cameraInputRef} 
-                onChange={handleFileUpload} 
+                onChange={handleFileSelect} 
                 accept="image/*"
                 capture="environment"
                 className="hidden" 
@@ -476,7 +500,7 @@ const ChatInterface: React.FC = () => {
             <input 
                 type="file" 
                 ref={fileInputRef} 
-                onChange={handleFileUpload} 
+                onChange={handleFileSelect} 
                 accept="image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 className="hidden" 
             />
@@ -514,6 +538,32 @@ const ChatInterface: React.FC = () => {
             </button>
         </div>
       </div>
+      
+      {/* Image Preview Modal */}
+      {previewUrl && (
+          <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 animate-in fade-in">
+              <div className="bg-white rounded-3xl p-4 w-full max-w-sm flex flex-col items-center">
+                  <h3 className="text-lg font-bold text-gray-800 mb-4">Confirm Image</h3>
+                  <div className="relative w-full aspect-[4/5] bg-gray-100 rounded-xl overflow-hidden mb-6 flex items-center justify-center">
+                      <img src={previewUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
+                  </div>
+                  <div className="flex gap-4 w-full">
+                      <button 
+                        onClick={cancelPreview}
+                        className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold flex items-center justify-center hover:bg-gray-200"
+                      >
+                          <RotateCcw size={20} className="mr-2" /> Retake
+                      </button>
+                      <button 
+                        onClick={() => previewFile && processFile(previewFile)}
+                        className="flex-1 py-3 bg-orange-500 text-white rounded-xl font-bold flex items-center justify-center hover:bg-orange-600"
+                      >
+                          <Check size={20} className="mr-2" /> Send
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 };
