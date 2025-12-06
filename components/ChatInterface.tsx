@@ -4,6 +4,7 @@ import { chatWithPanda, generateSpeech, extractTextFromFile } from '../services/
 import { playPCM, stopAudio, calculateWeightedActiveIndex } from '../utils/audio';
 import { Message, ChatResponse } from '../types';
 import ChineseChar from './ChineseChar';
+import ImageCropper from './ImageCropper';
 
 interface SavedSession {
     id: string;
@@ -50,9 +51,8 @@ const ChatInterface: React.FC = () => {
   const [showHistory, setShowHistory] = useState(false);
   const [sessionId, setSessionId] = useState<string>(Date.now().toString());
   
-  // Image Preview State
-  const [previewFile, setPreviewFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  // Cropper State
+  const [croppingFile, setCroppingFile] = useState<File | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -110,7 +110,6 @@ const ChatInterface: React.FC = () => {
     return () => {
         stopAudio();
         if (requestRef.current) cancelAnimationFrame(requestRef.current);
-        if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, []);
 
@@ -168,9 +167,7 @@ const ChatInterface: React.FC = () => {
       if (!file) return;
 
       if (file.type.startsWith('image/')) {
-        setPreviewFile(file);
-        const url = URL.createObjectURL(file);
-        setPreviewUrl(url);
+        setCroppingFile(file);
       } else {
         processFile(file);
       }
@@ -180,15 +177,8 @@ const ChatInterface: React.FC = () => {
       if (cameraInputRef.current) cameraInputRef.current.value = '';
   };
   
-  const cancelPreview = () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null);
-      setPreviewFile(null);
-  };
-
   const processFile = async (file: File) => {
-      setPreviewUrl(null);
-      setPreviewFile(null);
+      setCroppingFile(null);
       setIsProcessingFile(true);
       
       try {
@@ -356,6 +346,15 @@ const ChatInterface: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-gray-50 max-w-md mx-auto w-full relative">
+      {/* Cropper Modal */}
+      {croppingFile && (
+          <ImageCropper 
+            file={croppingFile}
+            onConfirm={processFile}
+            onCancel={() => setCroppingFile(null)}
+          />
+      )}
+
       {/* Header (Flex Item) */}
       <div className="bg-white p-4 shadow-sm border-b border-gray-100 z-10 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center">
@@ -538,32 +537,6 @@ const ChatInterface: React.FC = () => {
             </button>
         </div>
       </div>
-      
-      {/* Image Preview Modal */}
-      {previewUrl && (
-          <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 animate-in fade-in">
-              <div className="bg-white rounded-3xl p-4 w-full max-w-sm flex flex-col items-center">
-                  <h3 className="text-lg font-bold text-gray-800 mb-4">Confirm Image</h3>
-                  <div className="relative w-full aspect-[4/5] bg-gray-100 rounded-xl overflow-hidden mb-6 flex items-center justify-center">
-                      <img src={previewUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
-                  </div>
-                  <div className="flex gap-4 w-full">
-                      <button 
-                        onClick={cancelPreview}
-                        className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold flex items-center justify-center hover:bg-gray-200"
-                      >
-                          <RotateCcw size={20} className="mr-2" /> Retake
-                      </button>
-                      <button 
-                        onClick={() => previewFile && processFile(previewFile)}
-                        className="flex-1 py-3 bg-orange-500 text-white rounded-xl font-bold flex items-center justify-center hover:bg-orange-600"
-                      >
-                          <Check size={20} className="mr-2" /> Send
-                      </button>
-                  </div>
-              </div>
-          </div>
-      )}
     </div>
   );
 };

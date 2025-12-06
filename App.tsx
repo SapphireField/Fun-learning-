@@ -79,7 +79,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden bg-orange-50 font-sans">
+    <div className="h-[100dvh] w-screen flex flex-col overflow-hidden bg-orange-50 font-sans">
       
       {/* Global Header Controls (Absolute) */}
       <div className="absolute top-4 right-4 z-50">

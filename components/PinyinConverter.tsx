@@ -5,6 +5,7 @@ import { playPCM, stopAudio, calculateWeightedActiveIndex } from '../utils/audio
 import { exportToEpub, exportToHtml, exportToPdf, exportToWord } from '../utils/exportUtils';
 import { PinyinChar } from '../types';
 import ChineseChar from './ChineseChar';
+import ImageCropper from './ImageCropper';
 
 interface HistoryItem {
     id: string;
@@ -25,9 +26,8 @@ const PinyinConverter: React.FC = () => {
   const [fileProcessing, setFileProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Preview State
-  const [previewFile, setPreviewFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  // Cropper State
+  const [croppingFile, setCroppingFile] = useState<File | null>(null);
   
   // New UI State
   const [showHistory, setShowHistory] = useState(false);
@@ -57,7 +57,6 @@ const PinyinConverter: React.FC = () => {
     return () => {
         stopAudio();
         if (requestRef.current) cancelAnimationFrame(requestRef.current);
-        if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, []);
 
@@ -216,11 +215,9 @@ const PinyinConverter: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // For images, we show preview. For docs, we process directly.
+    // For images, use Cropper. For docs, process directly.
     if (file.type.startsWith('image/')) {
-        setPreviewFile(file);
-        const url = URL.createObjectURL(file);
-        setPreviewUrl(url);
+        setCroppingFile(file);
     } else {
         processFile(file);
     }
@@ -231,8 +228,7 @@ const PinyinConverter: React.FC = () => {
   };
 
   const processFile = async (file: File) => {
-    setPreviewUrl(null);
-    setPreviewFile(null);
+    setCroppingFile(null);
     setFileProcessing(true);
     setInputText("Processing file...");
     setError(null);
@@ -254,12 +250,6 @@ const PinyinConverter: React.FC = () => {
     }
   };
 
-  const cancelPreview = () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(null);
-    setPreviewFile(null);
-  };
-
   const clear = () => {
     stopAudio();
     setIsPlaying(false);
@@ -275,6 +265,15 @@ const PinyinConverter: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full p-4 max-w-md mx-auto w-full overflow-y-auto no-scrollbar pb-24 relative">
+      {/* Cropper Modal */}
+      {croppingFile && (
+          <ImageCropper 
+            file={croppingFile}
+            onConfirm={processFile}
+            onCancel={() => setCroppingFile(null)}
+          />
+      )}
+
       <div className="bg-white rounded-3xl shadow-xl p-6 mb-6 border-4 border-orange-100 relative overflow-hidden flex-shrink-0 no-print">
          <div className="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 bg-orange-200 rounded-full opacity-50 blur-xl"></div>
          <div className="flex justify-between items-center mb-4 relative z-10">
@@ -488,32 +487,6 @@ const PinyinConverter: React.FC = () => {
                         </div>
                     ))
                 )}
-              </div>
-          </div>
-      )}
-      
-      {/* Image Preview Modal */}
-      {previewUrl && (
-          <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 animate-in fade-in">
-              <div className="bg-white rounded-3xl p-4 w-full max-w-sm flex flex-col items-center">
-                  <h3 className="text-lg font-bold text-gray-800 mb-4">Confirm Image</h3>
-                  <div className="relative w-full aspect-[4/5] bg-gray-100 rounded-xl overflow-hidden mb-6 flex items-center justify-center">
-                      <img src={previewUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
-                  </div>
-                  <div className="flex gap-4 w-full">
-                      <button 
-                        onClick={cancelPreview}
-                        className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold flex items-center justify-center hover:bg-gray-200"
-                      >
-                          <RotateCcw size={20} className="mr-2" /> Retake
-                      </button>
-                      <button 
-                        onClick={() => previewFile && processFile(previewFile)}
-                        className="flex-1 py-3 bg-orange-500 text-white rounded-xl font-bold flex items-center justify-center hover:bg-orange-600"
-                      >
-                          <Check size={20} className="mr-2" /> Process
-                      </button>
-                  </div>
               </div>
           </div>
       )}

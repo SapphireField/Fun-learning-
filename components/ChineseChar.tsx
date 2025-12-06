@@ -67,12 +67,12 @@ const ChineseChar: React.FC<ChineseCharProps> = ({ char, pinyin, size = 'md', is
         {char}
       </span>
 
-      {/* Audio Button - Shows on hover or if active */}
+      {/* Audio Button - ALWAYS VISIBLE for mobile accessibility */}
       {onPlayAudio && (
           <button
             onClick={handlePlayClick}
-            className={`absolute -top-1 -right-2 p-1 rounded-full bg-white shadow-sm border border-orange-100 text-orange-400 hover:text-orange-600 hover:bg-orange-50 transition-all z-10
-            ${isLoadingAudio ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} lg:opacity-0 lg:group-hover:opacity-100`}
+            className={`absolute -top-1 -right-2 p-1.5 rounded-full bg-white shadow-sm border border-orange-100 transition-all z-10
+            ${isLoadingAudio || isActive ? 'text-orange-600 bg-orange-50' : 'text-gray-300 hover:text-orange-500'}`}
             title="Play sound"
           >
             {isLoadingAudio ? (
