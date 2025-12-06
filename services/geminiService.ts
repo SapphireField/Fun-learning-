@@ -463,9 +463,12 @@ export const generateSpeech = async (text: string, style: 'speech' | 'song' | 's
     }
 
     if (style === 'song') {
-        textToProcess = `Cheerfully and rhythmically recite the following Chinese nursery rhyme: ${textToProcess}`;
+        textToProcess = `Speak in Mandarin Chinese. Cheerfully and rhythmically recite the following Chinese nursery rhyme: ${textToProcess}`;
     } else if (style === 'story') {
-        textToProcess = `Read the following Chinese story warmly, slowly, and expressively for a child: ${textToProcess}`;
+        textToProcess = `Speak in Mandarin Chinese. Read the following Chinese story warmly, slowly, and expressively for a child: ${textToProcess}`;
+    } else {
+        // Enforce Mandarin for single characters/speech
+        textToProcess = `Speak in Mandarin Chinese: ${textToProcess}`;
     }
 
     const response = await ai.models.generateContent({

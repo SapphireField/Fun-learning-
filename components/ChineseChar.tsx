@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Volume2, Loader2 } from 'lucide-react';
 
 interface ChineseCharProps {
   char: string;
@@ -14,17 +13,17 @@ const ChineseChar: React.FC<ChineseCharProps> = ({ char, pinyin, size = 'md', is
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
 
   const sizeClasses = {
-    sm: { text: 'text-xl', pinyin: 'text-xs', icon: 12 },
-    md: { text: 'text-3xl', pinyin: 'text-sm', icon: 14 },
-    lg: { text: 'text-4xl', pinyin: 'text-base', icon: 16 },
-    xl: { text: 'text-6xl', pinyin: 'text-xl', icon: 20 },
+    sm: { text: 'text-xl', pinyin: 'text-xs', minHeight: 'min-h-[16px]' },
+    md: { text: 'text-3xl', pinyin: 'text-sm', minHeight: 'min-h-[20px]' },
+    lg: { text: 'text-4xl', pinyin: 'text-base', minHeight: 'min-h-[24px]' },
+    xl: { text: 'text-6xl', pinyin: 'text-xl', minHeight: 'min-h-[28px]' },
   };
 
   const currentSize = sizeClasses[size];
   const isPunctuation = !pinyin || pinyin.trim() === '';
 
-  const handlePlayClick = async (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent toggling pinyin
+  const handleCharClick = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent bubbling if nested
     if (onPlayAudio && !isLoadingAudio) {
         setIsLoadingAudio(true);
         try {
@@ -35,10 +34,16 @@ const ChineseChar: React.FC<ChineseCharProps> = ({ char, pinyin, size = 'md', is
     }
   };
 
+  const handlePinyinClick = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setShowPinyin(!showPinyin);
+  };
+
   // If it's punctuation, simply render the character nicely aligned
   if (isPunctuation) {
     return (
         <div className={`flex flex-col items-center justify-end mx-0.5 my-1 h-full select-none transition-all duration-300 ${isActive ? 'scale-110' : ''}`}>
+             <div className={`${currentSize.minHeight} mb-[-4px]`}></div>
              <span className={`${currentSize.text} text-gray-800 font-medium leading-none mb-1 opacity-70`}>{char}</span>
         </div>
     );
@@ -47,41 +52,33 @@ const ChineseChar: React.FC<ChineseCharProps> = ({ char, pinyin, size = 'md', is
   return (
     <div 
         className={`flex flex-col items-center mx-1 my-1 cursor-pointer select-none transition-all duration-300 relative group
-        ${isActive ? 'scale-110 -translate-y-1' : 'active:scale-95'}`} 
-        onClick={() => setShowPinyin(!showPinyin)}
-        title="Tap to toggle Pinyin"
+        ${isActive ? 'scale-110 -translate-y-1' : 'active:scale-95'}
+        ${isLoadingAudio ? 'opacity-70' : ''}`} 
     >
-      <span 
-        className={`font-bold ${currentSize.pinyin} mb-[-4px] transition-opacity duration-200 ${
-            isActive ? 'text-orange-600' : 'text-gray-500'
-        } ${showPinyin ? 'opacity-100' : 'opacity-0'}`}
-        style={{ visibility: showPinyin ? 'visible' : 'hidden' }}
+      {/* Pinyin Container - Always clickable even if hidden */}
+      <div 
+        className={`${currentSize.minHeight} w-full flex items-center justify-center mb-[-4px] z-10`}
+        onClick={handlePinyinClick}
       >
-        {pinyin}
-      </span>
-      <span 
-        className={`chinese-font ${currentSize.text} font-medium leading-none transition-colors duration-200 ${
-            isActive ? 'text-orange-500 drop-shadow-sm' : 'text-gray-800'
-        }`}
-      >
-        {char}
-      </span>
+        <span 
+            className={`font-bold ${currentSize.pinyin} transition-opacity duration-200 hover:text-orange-600 ${
+                isActive ? 'text-orange-600' : 'text-gray-500'
+            } ${showPinyin ? 'opacity-100' : 'opacity-0'}`}
+        >
+            {pinyin}
+        </span>
+      </div>
 
-      {/* Audio Button - ALWAYS VISIBLE for mobile accessibility */}
-      {onPlayAudio && (
-          <button
-            onClick={handlePlayClick}
-            className={`absolute -top-1 -right-2 p-1.5 rounded-full bg-white shadow-sm border border-orange-100 transition-all z-10
-            ${isLoadingAudio || isActive ? 'text-orange-600 bg-orange-50' : 'text-gray-300 hover:text-orange-500'}`}
-            title="Play sound"
-          >
-            {isLoadingAudio ? (
-                <Loader2 size={currentSize.icon} className="animate-spin" />
-            ) : (
-                <Volume2 size={currentSize.icon} />
-            )}
-          </button>
-      )}
+      {/* Character Container - Plays audio */}
+      <div onClick={handleCharClick} className="w-full text-center">
+        <span 
+            className={`chinese-font ${currentSize.text} font-medium leading-none transition-colors duration-200 ${
+                isActive || isLoadingAudio ? 'text-orange-500 drop-shadow-sm' : 'text-gray-800'
+            }`}
+        >
+            {char}
+        </span>
+      </div>
     </div>
   );
 };

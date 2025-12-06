@@ -4,7 +4,6 @@ import { chatWithPanda, generateSpeech, extractTextFromFile } from '../services/
 import { playPCM, stopAudio, calculateWeightedActiveIndex } from '../utils/audio';
 import { Message, ChatResponse } from '../types';
 import ChineseChar from './ChineseChar';
-import ImageCropper from './ImageCropper';
 
 interface SavedSession {
     id: string;
@@ -51,9 +50,6 @@ const ChatInterface: React.FC = () => {
   const [showHistory, setShowHistory] = useState(false);
   const [sessionId, setSessionId] = useState<string>(Date.now().toString());
   
-  // Cropper State
-  const [croppingFile, setCroppingFile] = useState<File | null>(null);
-
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -165,12 +161,7 @@ const ChatInterface: React.FC = () => {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-
-      if (file.type.startsWith('image/')) {
-        setCroppingFile(file);
-      } else {
-        processFile(file);
-      }
+      processFile(file);
 
       // Reset inputs
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -178,7 +169,6 @@ const ChatInterface: React.FC = () => {
   };
   
   const processFile = async (file: File) => {
-      setCroppingFile(null);
       setIsProcessingFile(true);
       
       try {
@@ -321,6 +311,15 @@ const ChatInterface: React.FC = () => {
                     pinyin={item.pinyin}
                     size="sm"
                     isActive={isThisPlaying && idx === activeIndex}
+                    onPlayAudio={async () => {
+                        // For chat individual char playback
+                        try {
+                            const audio = await generateSpeech(item.char, 'speech');
+                            if (audio) await playPCM(audio);
+                        } catch (e) {
+                            console.error(e);
+                        }
+                    }}
                   />
               ))}
               <button 
@@ -346,15 +345,6 @@ const ChatInterface: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-gray-50 max-w-md mx-auto w-full relative">
-      {/* Cropper Modal */}
-      {croppingFile && (
-          <ImageCropper 
-            file={croppingFile}
-            onConfirm={processFile}
-            onCancel={() => setCroppingFile(null)}
-          />
-      )}
-
       {/* Header (Flex Item) */}
       <div className="bg-white p-4 shadow-sm border-b border-gray-100 z-10 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center">

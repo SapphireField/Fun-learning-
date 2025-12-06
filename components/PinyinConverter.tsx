@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Wand2, Volume2, X, Loader2, History, Trash2, Clock, Square, Upload, Download, FileText, Printer, BookOpen, AlertCircle, Save, Camera, Check, RotateCcw } from 'lucide-react';
+import { Wand2, Volume2, X, Loader2, History, Trash2, Clock, Square, Upload, Download, FileText, Printer, BookOpen, AlertCircle, Save, Camera, Check } from 'lucide-react';
 import { convertLargeTextToPinyin, generateSpeech, extractTextFromFile } from '../services/geminiService';
 import { playPCM, stopAudio, calculateWeightedActiveIndex } from '../utils/audio';
 import { exportToEpub, exportToHtml, exportToPdf, exportToWord } from '../utils/exportUtils';
 import { PinyinChar } from '../types';
 import ChineseChar from './ChineseChar';
-import ImageCropper from './ImageCropper';
 
 interface HistoryItem {
     id: string;
@@ -26,8 +25,9 @@ const PinyinConverter: React.FC = () => {
   const [fileProcessing, setFileProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Cropper State
-  const [croppingFile, setCroppingFile] = useState<File | null>(null);
+  // Preview State
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   
   // New UI State
   const [showHistory, setShowHistory] = useState(false);
@@ -59,6 +59,13 @@ const PinyinConverter: React.FC = () => {
         if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
   }, []);
+
+  // Clean up preview URL
+  useEffect(() => {
+    if (previewUrl) {
+        return () => URL.revokeObjectURL(previewUrl);
+    }
+  }, [previewUrl]);
 
   const saveToHistory = (text: string, data: PinyinChar[]) => {
       try {
@@ -215,10 +222,12 @@ const PinyinConverter: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // For images, use Cropper. For docs, process directly.
     if (file.type.startsWith('image/')) {
-        setCroppingFile(file);
+        // Show preview for images
+        setPreviewFile(file);
+        setPreviewUrl(URL.createObjectURL(file));
     } else {
+        // Direct process for docs
         processFile(file);
     }
     
@@ -228,7 +237,8 @@ const PinyinConverter: React.FC = () => {
   };
 
   const processFile = async (file: File) => {
-    setCroppingFile(null);
+    setPreviewFile(null);
+    setPreviewUrl(null);
     setFileProcessing(true);
     setInputText("Processing file...");
     setError(null);
@@ -265,13 +275,30 @@ const PinyinConverter: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full p-4 max-w-md mx-auto w-full overflow-y-auto no-scrollbar pb-24 relative">
-      {/* Cropper Modal */}
-      {croppingFile && (
-          <ImageCropper 
-            file={croppingFile}
-            onConfirm={processFile}
-            onCancel={() => setCroppingFile(null)}
-          />
+      {/* Preview Modal */}
+      {previewFile && previewUrl && (
+          <div className="fixed inset-0 z-[60] bg-black flex flex-col animate-in fade-in h-full w-full">
+            <div className="flex justify-between items-center p-4 bg-black/50 backdrop-blur-sm z-10">
+                 <button onClick={() => { setPreviewFile(null); setPreviewUrl(null); }} className="text-white p-2 rounded-full hover:bg-white/20">
+                    <X size={24} />
+                 </button>
+                 <h3 className="text-white font-bold">Review Image</h3>
+                 <div className="w-10"></div> 
+            </div>
+            
+            <div className="flex-1 flex items-center justify-center p-4">
+                <img src={previewUrl} alt="Preview" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />
+            </div>
+
+            <div className="p-6 bg-black/80">
+                <button 
+                    onClick={() => processFile(previewFile)}
+                    className="w-full py-4 bg-orange-500 text-white rounded-2xl font-bold text-lg shadow-lg hover:bg-orange-600 transition-all active:scale-95 flex items-center justify-center"
+                >
+                    <Check className="mr-2" /> Use this Photo
+                </button>
+            </div>
+          </div>
       )}
 
       <div className="bg-white rounded-3xl shadow-xl p-6 mb-6 border-4 border-orange-100 relative overflow-hidden flex-shrink-0 no-print">
@@ -431,7 +458,7 @@ const PinyinConverter: React.FC = () => {
                 </div>
             </div>
             
-            <p className="text-sm text-gray-400 mb-2 italic text-center no-print">Tap speaker to hear one character, or play all</p>
+            <p className="text-sm text-gray-400 mb-2 italic text-center no-print">Tap character to hear pronunciation</p>
 
             <div className="flex flex-wrap content-start justify-center">
                 {result.map((item, index) => (
