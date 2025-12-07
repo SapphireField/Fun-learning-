@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Mic, Volume2, StopCircle, Loader2, Square, MessageSquare, Paperclip, FileText, Camera, Check, X, BookOpen } from 'lucide-react';
 import { chatWithPanda, generateSpeech, extractTextFromFile } from '../services/geminiService';
-import { playPCM, stopAudio, calculateWeightedActiveIndex } from '../utils/audio';
+import { playPCM, stopAudio, calculateWeightedActiveIndex, prepareAudio } from '../utils/audio';
 import { Message, ChatResponse } from '../types';
 import ChineseChar from './ChineseChar';
 
@@ -70,9 +70,9 @@ const ChatInterface: React.FC = () => {
   }, [input]);
 
   useEffect(() => {
-    if ('webkitSpeechRecognition' in window) {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const SpeechRecognition = (window as any).webkitSpeechRecognition;
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.continuous = false;
       recognitionRef.current.interimResults = false;
@@ -87,6 +87,13 @@ const ChatInterface: React.FC = () => {
       recognitionRef.current.onerror = (event: any) => {
         console.error("Speech recognition error", event.error);
         setIsListening(false);
+        if (event.error === 'not-allowed') {
+            alert("Microphone access denied. Please check your browser settings.");
+        } else if (event.error === 'no-speech') {
+            alert("No speech detected. Please try again.");
+        } else {
+            alert("Microphone error: " + event.error);
+        }
       };
 
       recognitionRef.current.onend = () => {
@@ -99,15 +106,19 @@ const ChatInterface: React.FC = () => {
     handleStopGlobal();
     
     if (!recognitionRef.current) {
-      alert("Speech recognition is not supported in this browser.");
+      alert("Speech recognition is not supported in this browser. Try Chrome or Safari.");
       return;
     }
 
     if (isListening) {
       recognitionRef.current.stop();
     } else {
-      recognitionRef.current.start();
-      setIsListening(true);
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (e) {
+        console.error(e);
+      }
     }
   };
 
@@ -187,8 +198,9 @@ const ChatInterface: React.FC = () => {
         setMessages(prev => [...prev, botMsg]);
         setIsLoading(false);
         handlePlayAudio(response.chinese, botMsgId);
-    } catch (error) {
+    } catch (error: any) {
         setIsLoading(false);
+        alert("Teacher Panda couldn't reply: " + error.message);
     }
   };
 
@@ -216,6 +228,8 @@ const ChatInterface: React.FC = () => {
     }
 
     handleStopGlobal();
+    prepareAudio(); // Unlock audio immediately
+
     setPlayingAudioId(messageId);
     
     try {
@@ -227,9 +241,10 @@ const ChatInterface: React.FC = () => {
             requestRef.current = requestAnimationFrame(animate);
         });
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to play audio", e);
       setPlayingAudioId(null);
+      alert("Audio Error: " + e.message);
     }
   };
 

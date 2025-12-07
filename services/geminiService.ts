@@ -3,12 +3,16 @@ import { PinyinChar, ChatResponse, QuizQuestion, LearningMode } from '../types';
 
 const apiKey = process.env.API_KEY;
 
-// Initialize AI, but we will check for key presence in functions to give better UI feedback
+// Initialize AI
 const ai = new GoogleGenAI({ apiKey: apiKey || '' });
 
 const checkApiKey = () => {
     if (!apiKey || apiKey.trim() === '') {
         throw new Error("API Key is missing. Please add it in Vercel Settings (Environment Variables).");
+    }
+    // Basic format check
+    if (!apiKey.startsWith('AIza')) {
+        throw new Error("API Key looks invalid. It should start with 'AIza'. Check Vercel Settings.");
     }
 };
 
@@ -152,7 +156,7 @@ const processChunkWithRetries = async (chunk: string, index: number, mode: Learn
                 }
                 if (chunkResult.length > 0) return chunkResult;
             }
-            throw new Error("Empty result");
+            throw new Error("Empty result from AI");
 
         } catch (e: any) {
             let waitTime = 1000 * Math.pow(2, retryCount);
@@ -362,7 +366,7 @@ export const chatWithPanda = async (
     });
 
     const jsonText = response.text;
-    if (!jsonText) throw new Error("No response");
+    if (!jsonText) throw new Error("No response from Teacher Panda");
     return JSON.parse(jsonText) as ChatResponse;
 
   } catch (error) {
@@ -456,9 +460,12 @@ export const generateSpeech = async (text: string, style: 'speech' | 'song' | 's
       }
     });
 
-    return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || null;
+    const data = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!data) throw new Error("TTS Generation Failed");
+    return data;
   } catch (error) {
-    return null;
+    console.error("TTS Error", error);
+    throw error;
   }
 };
 

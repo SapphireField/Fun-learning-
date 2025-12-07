@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Wand2, Volume2, X, Loader2, Upload, Download, FileText, Printer, BookOpen, AlertCircle, Camera, Check, Square } from 'lucide-react';
 import { convertLargeTextToPinyin, generateSpeech, extractTextFromFile } from '../services/geminiService';
-import { playPCM, stopAudio, calculateWeightedActiveIndex } from '../utils/audio';
+import { playPCM, stopAudio, calculateWeightedActiveIndex, prepareAudio } from '../utils/audio';
 import { exportToEpub, exportToHtml, exportToPdf, exportToWord } from '../utils/exportUtils';
 import { PinyinChar } from '../types';
 import ChineseChar from './ChineseChar';
-import { prepareAudio } from '../utils/audio';
+import FlashcardMode from './FlashcardMode';
 
 const PinyinConverter: React.FC = () => {
   const [inputText, setInputText] = useState('');
@@ -17,6 +17,9 @@ const PinyinConverter: React.FC = () => {
   const [playbackProgress, setPlaybackProgress] = useState(0); // 0 to 1
   const [fileProcessing, setFileProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Flashcard State
+  const [showFlashcards, setShowFlashcards] = useState(false);
   
   // Preview State
   const [previewFile, setPreviewFile] = useState<File | null>(null);
@@ -121,6 +124,7 @@ const PinyinConverter: React.FC = () => {
         }
     } catch (e: any) {
         setError("Failed to generate audio: " + e.message);
+        alert("Audio Error: " + e.message);
     } finally {
         setAudioLoading(false);
     }
@@ -138,8 +142,9 @@ const PinyinConverter: React.FC = () => {
         if (base64Audio) {
             await playPCM(base64Audio);
         }
-    } catch (e) {
+    } catch (e: any) {
         console.error("Failed to play char audio", e);
+        alert("Audio Error: " + e.message);
     }
   };
 
@@ -197,6 +202,10 @@ const PinyinConverter: React.FC = () => {
   };
   
   const activeIndex = isPlaying ? calculateWeightedActiveIndex(playbackProgress, result) : -1;
+
+  if (showFlashcards) {
+    return <FlashcardMode data={result} onClose={() => setShowFlashcards(false)} />;
+  }
 
   return (
     <div className="flex flex-col h-full p-4 max-w-md mx-auto w-full overflow-y-auto no-scrollbar pb-24 relative">
@@ -318,6 +327,8 @@ const PinyinConverter: React.FC = () => {
             <div className="flex justify-between items-center mb-4 no-print">
                 <h3 className="text-xl font-bold text-teal-600 fun-font">Result</h3>
                 <div className="flex gap-1">
+                    <button onClick={() => setShowFlashcards(true)} className="p-2 rounded-full bg-yellow-50 text-yellow-600 hover:bg-yellow-100 transition-colors" title="Study Flashcards"><BookOpen size={18} /></button>
+                    <div className="w-px h-8 bg-gray-200 mx-1"></div>
                     <button 
                         onClick={() => exportToHtml(result)}
                         className="p-2 rounded-full bg-teal-50 text-teal-600 hover:bg-teal-100 transition-colors"

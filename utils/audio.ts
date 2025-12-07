@@ -27,6 +27,15 @@ export function prepareAudio() {
     if (ctx.state === 'suspended') {
         ctx.resume();
     }
+    
+    // THE SILENT BUFFER TRICK
+    // Just resuming isn't enough for some strict browsers. We must play a sound.
+    // We play a 1-sample silent buffer. This forces the audio engine to unlock.
+    const buffer = ctx.createBuffer(1, 1, 22050);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start(0);
 }
 
 export function stopAudio() {
